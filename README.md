@@ -1,0 +1,2 @@
+# torchgt on ascend npu
+
