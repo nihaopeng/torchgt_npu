@@ -1,10 +1,13 @@
 # torchgt on ascend npu
 
-## ascend 910
+## ascend 910B4
 
 ## run
 torchgt
 
 cd TorchGT
 
-bash script/1_....sh
+bash scripts/1_efficiency.sh
+
+## torch_npu
+bash run.sh
