@@ -23,8 +23,12 @@ _LAST_BATCH_FLAG = False
 
 def initialize_distributed(args):
     """Initialize torch.distributed and core model parallel."""
-    device_count = torch.cuda.device_count()
-    assert device_count != 0, 'expected GPU number > 0.'
+    if args.distributed_backend == 'hccl':
+        import torch_npu
+        device_count = torch_npu.npu.device_count()
+    else:
+        device_count = torch.cuda.device_count()
+    assert device_count != 0, 'expected PU number > 0.'
     if torch.distributed.is_initialized():
         if torch.distributed.get_rank() == 0:
             print('torch distributed is already initialized, '
@@ -46,8 +50,10 @@ def initialize_distributed(args):
                     'expected local-rank to be the same as rank % device-count.'
             else:
                 args.local_rank = device
-
-            torch.cuda.set_device(device) # only do so when device_count > 0
+            if args.distributed_backend == 'hccl':
+                torch_npu.npu.set_device(device)
+            else:
+                torch.cuda.set_device(device) # only do so when device_count > 0
     
     global _GLOBAL_TOKEN_NUM
     _GLOBAL_TOKEN_NUM = args.num_global_node

@@ -439,7 +439,8 @@ def get_batch_reorder_blockize(args, x, y, idx_batch, rest_split_sizes, device, 
         else:
             sizes_broad = torch.empty(2, dtype=torch.int64, device=device)
         dist.barrier()
-        dist.broadcast(sizes_broad, src_rank, group=group)
+        if seq_parallel_world_size > 1:
+            dist.broadcast(sizes_broad, src_rank, group=group)
         
         if args.rank == 0:
             edge_index_i_broad = edge_index_i.to(device)
@@ -452,8 +453,9 @@ def get_batch_reorder_blockize(args, x, y, idx_batch, rest_split_sizes, device, 
             sorted_indices_broad = torch.empty((shape[1]),
                                     device=device,
                                     dtype=torch.int64)
-        dist.broadcast(edge_index_i_broad, src_rank, group=group)
-        dist.broadcast(sorted_indices_broad, src_rank, group=group)
+        if seq_parallel_world_size > 1:
+            dist.broadcast(edge_index_i_broad, src_rank, group=group)
+            dist.broadcast(sorted_indices_broad, src_rank, group=group)
         edge_index_i = edge_index_i_broad.to("cpu")
         sorted_indices = sorted_indices_broad.to("cpu")
         # dist.barrier()

@@ -33,13 +33,22 @@ def main():
    
     # Initialize distributed 
     initialize_distributed(args)
-    device = f'cuda:{torch.cuda.current_device()}' 
+    if args.distributed_backend == 'hccl':
+        import torch_npu
+        device = f'npu:{torch_npu.npu.current_device()}' 
+    else:
+        device = f'cuda:{torch.cuda.current_device()}'
     
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(args.seed)
+    if args.distributed_backend == 'hccl':
+        import torch_npu
+        if torch_npu.npu.is_available():
+            torch_npu.npu.manual_seed_all(args.seed)
+    else:
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(args.seed)
     
     if args.rank == 0:
         os.makedirs(args.model_dir, exist_ok=True)
@@ -68,14 +77,15 @@ def main():
 
     train_idx = split_idx['train']
     if args.rank == 0:
-        flatten_train_idx = train_idx.to('cuda')
+        flatten_train_idx = train_idx.to('npu' if args.distributed_backend == 'hccl' else 'cuda')
     else:
         total_numel = train_idx.numel()
         flatten_train_idx = torch.empty(total_numel,
                                 device=device,
                                 dtype=torch.int64)
     # Broadcast
-    dist.broadcast(flatten_train_idx, src_rank, group=group)
+    if seq_parallel_world_size > 1:
+        dist.broadcast(flatten_train_idx, src_rank, group=group)
 
     # Initialize global token indices
     seq_len_per_rank = get_sequence_length_per_rank()
@@ -133,7 +143,8 @@ def main():
         print('Model params:', sum(p.numel() for p in model.parameters()))
 
     # Sync params and buffers. Ensures all rank models start off at the same value
-    sync_params_and_buffers(model)
+    if seq_parallel_world_size > 1:
+        sync_params_and_buffers(model)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.peak_lr, weight_decay=args.weight_decay)
     lr_scheduler = PolynomialDecayLR(
@@ -197,10 +208,11 @@ def main():
             loss.backward()
             
             # Sync all-reduce gradient 
-            for name, param in model.named_parameters():
-                if param.requires_grad and param.grad is not None:
-                    param.grad.div_(get_sequence_parallel_world_size())
-                    dist.all_reduce(param.grad, op=dist.ReduceOp.SUM, group=get_sequence_parallel_group())
+            if seq_parallel_world_size > 1:
+                for name, param in model.named_parameters():
+                    if param.requires_grad and param.grad is not None:
+                        param.grad.div_(get_sequence_parallel_world_size())
+                        dist.all_reduce(param.grad, op=dist.ReduceOp.SUM, group=get_sequence_parallel_group())
 
             optimizer.step()  
             torch.cuda.synchronize()   
@@ -275,7 +287,8 @@ def main():
             beta_idx_broad = torch.empty(1, dtype=torch.int64, device=device)
 
         dist.barrier()
-        dist.broadcast(beta_idx_broad, src_rank, group=group)
+        if seq_parallel_world_size > 1:
+            dist.broadcast(beta_idx_broad, src_rank, group=group)
         beta_idx = int(beta_idx_broad.item())
 
     if args.rank == 0:

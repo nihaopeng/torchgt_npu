@@ -64,7 +64,7 @@ def parser_add_main_args(parser):
     parser.add_argument('--sequence-parallel-size', type=int, default=4,
                        help='Enable DeepSpeed\'s sequence parallel.')
     parser.add_argument('--distributed-backend', default='nccl',
-                       choices=['nccl', 'gloo', 'ccl'],
+                       choices=['nccl', 'gloo', 'ccl', 'hccl'],
                        help='Which backend to use for distributed training.')
     parser.add_argument('--distributed-timeout-minutes', type=int, default=10,
                        help='Timeout minutes for torch.distributed.')
