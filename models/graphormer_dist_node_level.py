@@ -1,4 +1,5 @@
 import torch
+import torch_npu
 import math
 import torch.nn as nn
 from torch.nn import functional as F
@@ -113,12 +114,14 @@ class CoreAttention(nn.Module):
         # Add-up real msgs in destination nodes as given by edge_index[1]
         # -> [total_s, np, hn]
         wV = torch.zeros_like(v)  
-        scatter(msg, edge_index[1], dim=0, out=wV, reduce='add')
+        # scatter(msg, edge_index[1].to(torch.long), dim=0, out=wV, reduce='sum')
+        wV = torch_npu.scatter(msg, edge_index[1], dim=0)
 
         # Compute attention normalization coefficient
         # -> [total_s, np, 1]
-        Z = score.new_zeros(v.size(0), num_heads, 1)    
-        scatter(score, edge_index[1], dim=0, out=Z, reduce='add')
+        Z = score.new_zeros(v.size(0), num_heads, 1)
+        # scatter(score, edge_index[1], dim=0, out=Z, reduce='sum') 
+        Z = torch_npu.scatter(score, edge_index[1], dim=0)
 
         x = wV / (Z + 1e-6)
         
