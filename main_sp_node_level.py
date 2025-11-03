@@ -33,22 +33,13 @@ def main():
    
     # Initialize distributed 
     initialize_distributed(args)
-    if args.distributed_backend == 'hccl':
-        import torch_npu
-        device = f'npu:{torch_npu.npu.current_device()}' 
-    else:
-        device = f'cuda:{torch.cuda.current_device()}'
+    device = f'cuda:{torch.cuda.current_device()}'
     
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    if args.distributed_backend == 'hccl':
-        import torch_npu
-        if torch_npu.npu.is_available():
-            torch_npu.npu.manual_seed_all(args.seed)
-    else:
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
     
     if args.rank == 0:
         os.makedirs(args.model_dir, exist_ok=True)
@@ -77,7 +68,7 @@ def main():
 
     train_idx = split_idx['train']
     if args.rank == 0:
-        flatten_train_idx = train_idx.to('npu' if args.distributed_backend == 'hccl' else 'cuda')
+        flatten_train_idx = train_idx.to('cuda')
     else:
         total_numel = train_idx.numel()
         flatten_train_idx = torch.empty(total_numel,
