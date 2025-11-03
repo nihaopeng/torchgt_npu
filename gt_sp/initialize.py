@@ -1,7 +1,7 @@
 import random
 import os
 import time
-
+import torch_npu
 import numpy as np
 import torch
 from datetime import timedelta
@@ -23,11 +23,7 @@ _LAST_BATCH_FLAG = False
 
 def initialize_distributed(args):
     """Initialize torch.distributed and core model parallel."""
-    if args.distributed_backend == 'hccl':
-        import torch_npu
-        device_count = torch_npu.npu.device_count()
-    else:
-        device_count = torch.cuda.device_count()
+    device_count = torch_npu.npu.device_count()
     assert device_count != 0, 'expected PU number > 0.'
     if torch.distributed.is_initialized():
         if torch.distributed.get_rank() == 0:
