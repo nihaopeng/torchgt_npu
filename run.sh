@@ -1,8 +1,5 @@
-# TorchGT
-torchrun --nproc_per_node=1 --master_port 8081 main_sp_node_level.py --dataset ogbn-arxiv --seq_len 64000 --n_layers 4 --hidden_dim 64 --ffn_dim 64 --num_heads 8 --epochs 2000 --model gt --distributed-backend 'nccl' --sequence-parallel-size 4 --attn_type sparse --reorder 
-
 ## multi gpu
-torchrun --nproc_per_node=3 --master_port 8081 main_sp_node_level.py --dataset ogbn-arxiv --seq_len 64000 --n_layers 4 --hidden_dim 64 --ffn_dim 64 --num_heads 8 --epochs 2000 --model gt --distributed-backend nccl --attn_type sparse --reorder 
+torchrun --nproc_per_node=3 --master_port 8081 main_sp_node_level.py --dataset ogbn-arxiv --seq_len 64000 --n_layers 4 --hidden_dim 64 --ffn_dim 64 --num_heads 8 --epochs 2000 --model gt --distributed-backend 'nccl' --attn_type sparse --reorder 
 
 ## multi npu
-torchrun --nproc_per_node=3 --master_port 8081 main_sp_node_level.py --dataset ogbn-arxiv --seq_len 64000 --n_layers 4 --hidden_dim 64 --ffn_dim 64 --num_heads 8 --epochs 2000 --model gt --distributed-backend nccl --attn_type sparse --reorder 
+torchrun --nproc_per_node=3 --master_port 8081 main_sp_node_level.py --dataset ogbn-arxiv --seq_len 64000 --n_layers 4 --hidden_dim 64 --ffn_dim 64 --num_heads 8 --epochs 2000 --model gt --distributed-backend 'hccl' --attn_type sparse --reorder 
