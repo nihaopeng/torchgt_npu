@@ -10,10 +10,8 @@ import time
 import sys
 import os
 import dgl
-import copy
 import contextlib
 import networkx as nx
-import itertools
 from torch.utils.data import DataLoader, SubsetRandomSampler
 from torch_geometric.utils import to_undirected, remove_self_loops, add_self_loops, subgraph
 from gt_sp.initialize import (

@@ -13,7 +13,6 @@ from gt_sp.initialize import (
 )
 from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
 
-
 def init_params(module, n_layers):
     if isinstance(module, nn.Linear):
         module.weight.data.normal_(mean=0.0, std=0.02 / math.sqrt(n_layers))
@@ -21,7 +20,6 @@ def init_params(module, n_layers):
             module.bias.data.zero_()
     if isinstance(module, nn.Embedding):
         module.weight.data.normal_(mean=0.0, std=0.02)
-
 
 class FeedForwardNetwork(nn.Module):
     def __init__(self, hidden_size, ffn_size, dropout_rate):
@@ -114,14 +112,14 @@ class CoreAttention(nn.Module):
         # Add-up real msgs in destination nodes as given by edge_index[1]
         # -> [total_s, np, hn]
         wV = torch.zeros_like(v)  
-        # scatter(msg, edge_index[1].to(torch.long), dim=0, out=wV, reduce='sum')
-        wV = torch_npu.scatter(msg, edge_index[1], dim=0)
+        scatter(msg, edge_index[1].to(torch.long), dim=0, out=wV, reduce='sum')
+        # wV = torch_npu.scatter(msg, edge_index[1], dim=0)
 
         # Compute attention normalization coefficient
         # -> [total_s, np, 1]
         Z = score.new_zeros(v.size(0), num_heads, 1)
-        # scatter(score, edge_index[1], dim=0, out=Z, reduce='sum') 
-        Z = torch_npu.scatter(score, edge_index[1], dim=0)
+        scatter(score, edge_index[1], dim=0, out=Z, reduce='sum') 
+        # Z = torch_npu.scatter(score, edge_index[1], dim=0)
 
         x = wV / (Z + 1e-6)
         
@@ -195,6 +193,23 @@ class CoreAttention(nn.Module):
         x = x.view(output_size[0], output_size[2], -1)
 
         return x
+    
+    def naive_attention(self, q, k, v, dropout_p=0.0):
+        # q, k, v: [batch, n_heads, seq_len, head_dim]
+        d_k = q.size(-1)
+
+        # 1. 计算注意力分数 (scaled dot-product)
+        attn_scores = torch.matmul(q, k.transpose(-2, -1)) / (d_k ** 0.5)
+
+        # 2. softmax 归一化
+        attn_probs = F.softmax(attn_scores, dim=-1)
+
+        # 3. dropout
+        attn_probs = F.dropout(attn_probs, p=dropout_p, training=True)
+
+        # 4. 加权求和
+        output = torch.matmul(attn_probs, v)
+        return output
 
 
     def forward(self, q, k, v, attn_bias=None, edge_index=None, attn_type=None):
@@ -213,7 +228,9 @@ class CoreAttention(nn.Module):
             q = q.half()
             k = k.half()
             v = v.half()
-            x = flash_attn_func(q, k, v, self.attention_dropout_rate)
+            # x = flash_attn_func(q, k, v, self.attention_dropout_rate)
+            x = self.naive_attention(q.permute(0,2,1,3), k.permute(0,2,1,3), v.permute(0,2,1,3), dropout_p=self.attention_dropout_rate)
+            x = x.permute(0,2,1,3).contiguous()
             x = x.float()
 
         # [b, s+1, hp]
