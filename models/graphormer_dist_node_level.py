@@ -11,7 +11,7 @@ from gt_sp.initialize import (
     get_sequence_parallel_world_size,
     get_last_batch_flag,
 )
-from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
+# from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
 
 def init_params(module, n_layers):
     if isinstance(module, nn.Linear):
