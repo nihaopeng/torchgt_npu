@@ -848,7 +848,7 @@ def broadcast_data(args, dataset_train, batch, device):
     batch_idx = batch.idx
 
     if rank == 0:
-        flatten_idx = batch_idx.to('cuda')
+        flatten_idx = batch_idx.to('npu')
     else:
         total_numel = batch_idx.numel()
         flatten_idx = torch.empty(total_numel,

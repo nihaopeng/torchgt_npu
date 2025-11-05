@@ -1,4 +1,5 @@
 import torch
+import torch_npu
 import torch.nn.functional as F
 import numpy as np
 from gt_sp.utils import get_batch, gen_sub_edge_index
@@ -53,7 +54,7 @@ def eval(args, model, device, x, y, sub_idx, adjs):
         loss_list.append(loss.item())
         y_true.append(y_i.view(-1))
         y_pred.append(pred.argmax(1))
-        torch.cuda.empty_cache()
+        torch_npu.npu.empty_cache()
 
     y_pred = torch.cat(y_pred)
     y_true = torch.cat(y_true)
@@ -161,7 +162,7 @@ def eval_gpu_subset_batch(args, model, x, y, sub_idx, adjs, device):
     acc = calc_acc(y_true, y_pred)
     
     del x_i, y_i, attn_bias
-    torch.cuda.empty_cache()
+    torch_npu.npu.empty_cache()
     
     return acc  
 
@@ -259,7 +260,7 @@ def sparse_eval_gpu_subset_batch(args, model, x, y, sub_idx, adjs, edge_index, d
     acc = calc_acc(y_true.to(torch.device("cpu")), y_pred.to(torch.device("cpu")))
     
     del x_i, y_i, edge_index_i, attn_bias
-    torch.cuda.empty_cache()
+    torch_npu.npu.empty_cache()
     
     return acc  
 
@@ -365,7 +366,7 @@ def sparse_eval_gpu(args, model, x, y, sub_idx, attn_bias, edge_index, device):
     acc = calc_acc(y_true, y_pred)
     
     del x_i, y_i, edge_index_i
-    torch.cuda.empty_cache()
+    torch_npu.npu.empty_cache()
     
     return acc  
 

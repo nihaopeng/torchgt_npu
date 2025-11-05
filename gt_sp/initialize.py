@@ -46,10 +46,7 @@ def initialize_distributed(args):
                     'expected local-rank to be the same as rank % device-count.'
             else:
                 args.local_rank = device
-            if args.distributed_backend == 'hccl':
-                torch_npu.npu.set_device(device)
-            else:
-                torch.cuda.set_device(device) # only do so when device_count > 0
+            torch_npu.npu.set_device(device)
     
     global _GLOBAL_TOKEN_NUM
     _GLOBAL_TOKEN_NUM = args.num_global_node

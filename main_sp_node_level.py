@@ -208,7 +208,7 @@ def main():
                         dist.all_reduce(param.grad, op=dist.ReduceOp.SUM, group=get_sequence_parallel_group())
 
             optimizer.step()  
-            torch.cuda.synchronize()   
+            # torch.cuda.synchronize()   
             t2 = time.time() 
              
             iter_t_list.append(t2 - t1) 

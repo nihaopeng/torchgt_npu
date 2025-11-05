@@ -1,4 +1,5 @@
 import torch
+import torch_npu
 import torch.distributed as dist
 from multiprocessing.pool import ThreadPool
 import time
@@ -31,16 +32,16 @@ class Reducer(object):
             cnt += 1
             self._group[name] = dist.new_group() 
 
-        self._stream = torch.cuda.Stream(device=f'cuda:{torch.cuda.current_device()}')
+        self._stream = torch_npu.npu.Stream(device=f'npu:{torch_npu.npu.current_device()}')
 
     def reduce(self, param, name, data):
         # TODO communicate flatten tensor for high efficiency
-        self._stream.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(self._stream):
+        self._stream.wait_stream(torch_npu.npu.current_stream())
+        with torch_npu.npu.stream(self._stream):
             group = self._group[name]
             data.div_(get_sequence_parallel_world_size())
             dist.all_reduce(data, op=dist.ReduceOp.SUM, group=group)
             # param.grad = data            
 
     def synchronize(self):
-        torch.cuda.current_stream().wait_stream(self._stream)
+        torch_npu.npu.current_stream().wait_stream(self._stream)
