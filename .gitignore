@@ -1,0 +1,4 @@
+TorchGT/
+model_ckpt/
+dataset/
+__pycache__/
