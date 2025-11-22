@@ -1166,28 +1166,50 @@ def partition_nodes_metis(
 
 
 
-def recursively_rebalance_mode0(current_node: PartitionTreeNode):
-    """
-    重新调整。后序遍历来处理stray_nodes 列表
-    mode = 0,随机分配
-    """
-    # 先处理孩子
-    if not current_node.is_leaf():
-        for child in current_node.children:
-            recursively_rebalance_mode0(child)     
-    # 处理自己
-    stray_nodes_to_process = current_node.stray_nodes
-    if not stray_nodes_to_process:
-        return 
-    leaves = current_node.get_leaves()
-    for node_id in stray_nodes_to_process:
-        # 随机挑选一个叶子节点
-        leaf = random.choice(leaves)
-        leaf.node_idlist.append(node_id)
-    # 清空自己
-    current_node.stray_nodes = []
+# def recursively_rebalance_random(current_node: PartitionTreeNode):
+#     """
+#     重新调整。后序遍历来处理stray_nodes 列表
+#     mode = 0,随机分配
+#     """
+#     # 先处理孩子
+#     if not current_node.is_leaf():
+#         for child in current_node.children:
+#             recursively_rebalance_random(child)     
+#     # 处理自己
+#     stray_nodes_to_process = current_node.stray_nodes
+#     if not stray_nodes_to_process:
+#         return 
+#     leaves = current_node.get_leaves()
+#     for node_id in stray_nodes_to_process:
+#         # 随机挑选一个叶子节点
+#         leaf = random.choice(leaves)
+#         leaf.node_idlist.append(node_id)
+#     # 清空自己
+#     current_node.stray_nodes = []
 
+def recursively_rebalance_random(leaves: List[PartitionTreeNode]):
+    """
+    mode = 0,全局随机分配,不进行树的递归
+    """
+    kicked_nodes: List[int] = []
+    
+    # 1. 收集所有被踢出的节点
+    for leaf in leaves:
+        parent = leaf.parent
+        # 直接检查父节点是否有待重新分配的顶点
+        # 如果 parent.stray_nodes 为空，或者 parent 已经被访问并清空过，跳过之
+        if parent and parent.stray_nodes:
+            kicked_nodes.extend(parent.stray_nodes)
+            parent.stray_nodes = [] # 立即清空，防止同一个父节点被其他叶子访问时重复添加
+            
+    if not kicked_nodes:
+        return # 没有节点在动态调整过程中被踢出, 直接结束
 
+    # 全局随机分配
+    for node_id in kicked_nodes:
+        chosen_leaf = random.choice(leaves)
+        chosen_leaf.node_idlist.append(node_id)
+   
 
 
 def recursively_rebalance_attention(
@@ -1316,7 +1338,7 @@ def dynamic_window_build(
         # 将踢出的节点，放到父节点
         if nodes_to_kick:
             leaf_treenode.parent.stray_nodes.extend(nodes_to_kick)
-            for node_id in nodes_to_kick:       #记录最开始这个节点所在的窗口
+            for node_id in nodes_to_kick:       #记录最开始这个节点所在的窗口,用于实现“将这个节点放回原分区”
                 origin_map[node_id] = leaf_treenode
 
 
@@ -1325,14 +1347,14 @@ def dynamic_window_build(
     # TODO:完成调整到子节点的逻辑
     if mode == '0':
         print(f"--- 随机重新调整")
-        recursively_rebalance_mode0(root_TreeNode)
+        recursively_rebalance_random(leaves)
     elif mode == '1':
         print(f"--- attention重新调整")
         recursively_rebalance_attention(
             root_TreeNode, 
             feature,
             threshold,
-            origin_map
+            origin_map# 如果该节点和所有叶子分区计算attention都达不到阈值，就回到最原始的叶子分区
         )
     
     partitions_features: List[torch.Tensor] = []
@@ -1346,7 +1368,7 @@ def dynamic_window_build(
         train_idx_set.update(leaf_list)
    
     for leaf in leaves: 
-        #  [过滤] 只返回新的叶子中, 属于目标(partitions参数指定) 的顶点
+        #  [进行过滤] 只返回新的叶子当中属于目标(partitions参数指定，比如指定train_idx) 的顶点
         filtered_node_idlist = [
             node_id for node_id in leaf.node_idlist 
             if node_id in train_idx_set
@@ -1363,19 +1385,7 @@ def dynamic_window_build(
     
     return partitions_features, partitions_node_idlist
 
-    # for leaf in leaves: 
-    #     node_idlist = leaf.node_idlist
-    #     partitions_node_idlist.append(node_idlist) 
-    #     if len(node_idlist)>0:
-    #         id_tensor = torch.tensor(node_idlist, dtype=torch.long, device=device)
-    #         partitions_features.append(feature[id_tensor])
-    #     else:
-    #         # 空叶子
-    #         empty_feature = torch.empty(0, dim, dtype=feature.dtype, device=device)
-    #         partitions_features.append(empty_feature)
-    
 
-    # return partitions_features,partitions_node_idlist
 
 
 if __name__ == "__main__":
@@ -1461,28 +1471,52 @@ if __name__ == "__main__":
             
     print(f"为 {len(scores_partitions)} 个训练节点叶子生成了分数。\n")
     
-    # 5. --- (测试 dynamic_window_build) ---
+    # # 5. --- (测试 dynamic_window_build) ---
+    # print("="*40)
+    # print(f"--- 4. 测试 dynamic_window_build (Mode 1: Attention) ---")
+    # print("="*40)
+    
+    # (new_features_m1, new_ids_m1) = dynamic_window_build(
+    #     scores_partitions=scores_partitions,
+    #     root_TreeNode=root, # (我们传入刚构建的"完整"树)
+    #     partitions=train_leaves_ids, # (我们传入"过滤后"的ID列表)
+    #     feature=feature,
+    #     threshold=THRESHOLD_ATTN,
+    #     mode='1'
+    # )
+    
+    # print("\n--- dynamic_window_build (Mode 1) 结果: ---")
+    # print(f"  返回了 {len(new_ids_m1)} 个新叶子分区")
+    
+
+    # # 打印新叶子
+    # for i in range( len(new_ids_m1)):
+    #     print(f"    - 新叶子 {i}: {len(new_ids_m1[i])} 个节点, 特征 shape: {new_features_m1[i].shape}")
+    
+    
+    
+    
     print("="*40)
-    print(f"--- 4. 测试 dynamic_window_build (Mode 1: Attention) ---")
+    print(f"--- 4. 测试 dynamic_window_build (Mode 0: Random) ---") # [修改]
     print("="*40)
     
-    (new_features_m1, new_ids_m1) = dynamic_window_build(
+    (new_features_m0, new_ids_m0) = dynamic_window_build(
         scores_partitions=scores_partitions,
-        root_TreeNode=root, # (我们传入刚构建的"完整"树)
-        partitions=train_leaves_ids, # (我们传入"过滤后"的ID列表)
+        root_TreeNode=root, 
+        partitions=train_leaves_ids, 
         feature=feature,
-        threshold=THRESHOLD_ATTN,
-        mode='1'
+        threshold=THRESHOLD_ATTN, 
+        mode='0' 
     )
     
-    print("\n--- dynamic_window_build (Mode 1) 结果: ---")
-    print(f"  返回了 {len(new_ids_m1)} 个新叶子分区")
+    print("\n--- dynamic_window_build (Mode 0) 结果: ---")
+    print(f"  返回了 {len(new_ids_m0)} 个新叶子分区")
     
-
     # 打印新叶子
-    for i in range( len(new_ids_m1)):
-        print(f"    - 新叶子 {i}: {len(new_ids_m1[i])} 个节点, 特征 shape: {new_features_m1[i].shape}")
+    for i in range(len(new_ids_m0)):
+        print(f"    - 新叶子 {i}: {len(new_ids_m0[i])} 个节点, 特征 shape: {new_features_m0[i].shape}")
 
+    
 
 
 
