@@ -269,7 +269,7 @@ class DistributedAttentionNodeLevel(torch.nn.Module):
         
         # q, k, v: [b, s, np, hn]
         # -> [b, s, hp]
-        context_layer = self.local_attn(query_layer, key_layer, value_layer, attn_bias_layer, edge_index, attn_type, *args)
+        context_layer,score_layer = self.local_attn(query_layer, key_layer, value_layer, attn_bias_layer, edge_index, attn_type, *args)
 
         if self.training:
             # [b, s+p, hp] -> [b, s+p, hp]
@@ -279,8 +279,10 @@ class DistributedAttentionNodeLevel(torch.nn.Module):
             # gather_idx: 1, scatter_idx: 2
             
             output = _SeqAllToAll.apply(self.spg, context_layer, self.gather_idx, self.scatter_idx)
+            score = _SeqAllToAll.apply(self.spg, score_layer, self.gather_idx, self.scatter_idx)
         else:
             output = context_layer
+            score = score_layer
 
         # out e.g., [b, s/p+1, h]
-        return output
+        return output,score

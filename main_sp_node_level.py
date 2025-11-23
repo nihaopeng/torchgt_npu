@@ -26,6 +26,7 @@ from gt_sp.evaluate import sparse_eval_gpu
 from gt_sp.utils import random_split_idx, get_batch_reorder_blockize, check_conditions
 from utils.parser_node_level import parser_add_main_args
 from collections import deque
+from core.metisPartition import PartitionTree
 
 def main():
     parser = argparse.ArgumentParser(description='TorchGT node-level training arguments.')
@@ -51,6 +52,13 @@ def main():
     y = torch.load(args.dataset_dir + args.dataset + '/y.pt') # [N]
     edge_index = torch.load(args.dataset_dir + args.dataset + '/edge_index.pt') # [2, num_edges]
     N = feature.shape[0]
+    
+    # =================== metis partition =========================
+    partitionTree = PartitionTree(feature,edge_index)
+    root = partitionTree.partition_nodes_metis()
+    metis_partition_parts,metis_partition_nodes = partitionTree.get_final_partitions()
+    # =============================================================
+    
 
     if args.dataset == 'pokec':
         y = torch.clamp(y, min=0) 
@@ -177,13 +185,14 @@ def main():
                 x_i, y_i, edge_index_i, attn_bias = x_i.to(device), y_i.to(device), edge_index_i.to(device), attn_bias.to(device)
             else:
                 x_i, y_i, edge_index_i = x_i.to(device), y_i.to(device), edge_index_i.to(device)
-        
-            if args.attn_type == "sparse":
-                attn_type = "sparse"
-            elif args.attn_type == "full":
-                attn_type = "full"
-            elif args.attn_type == "flash":
-                attn_type = "flash"
+            
+            # if args.attn_type == "sparse":
+            #     attn_type = "sparse"
+            # elif args.attn_type == "full":
+            #     attn_type = "full"
+            # elif args.attn_type == "flash":
+            #     attn_type = "flash"
+            attn_type = "full"
             
             # if args.attn_type == "hybrid":
                 # if args.rank == 0: 
@@ -195,7 +204,8 @@ def main():
                 #     attn_type = "full"       
             t1 = time.time()
                 
-            out_i = model(x_i, attn_bias, edge_index_i, attn_type=attn_type)    
+            out_i,score = model(x_i, attn_bias, edge_index_i, attn_type=attn_type)
+            # print(f"score:{score.shape},x_i:{x_i.shape},out_i:{out_i.shape},y_i:{y_i.shape}")    
             loss = F.nll_loss(out_i, y_i.long())
             optimizer.zero_grad(set_to_none=True) 
             loss.backward()
@@ -224,7 +234,7 @@ def main():
 
         if args.rank == 0 and epoch % 5 == 0:   
             t4 = time.time()
-            train_acc = sparse_eval_gpu(args, model, feature, y, split_idx['train'], attn_bias, edge_index, device) 
+            train_acc = sparse_eval_gpu(args, model, feature, y, split_idx['train'], attn_bias, edge_index, device)
             val_acc = sparse_eval_gpu(args, model, feature, y, split_idx['valid'], attn_bias, edge_index, device)
             test_acc = sparse_eval_gpu(args, model, feature, y, split_idx['test'], attn_bias, edge_index, device)
             t5 = time.time()

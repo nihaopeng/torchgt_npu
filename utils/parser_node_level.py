@@ -19,7 +19,7 @@ def parser_add_main_args(parser):
     parser.add_argument('--input_dropout_rate', type=float, default=0.1)
     parser.add_argument('--attention_dropout_rate', type=float, default=0.5)
     parser.add_argument('--num_global_node', type=int, default=1)
-    parser.add_argument('--attn_type', type=str, default="sparse", help='whether to use sparse attention')
+    parser.add_argument('--attn_type', type=str, default="full", help='whether to use sparse attention')
 
     # training args
     parser.add_argument('--seq_len', type=int, default=256000, help='total sequence length here')

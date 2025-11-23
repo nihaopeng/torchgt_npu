@@ -63,19 +63,21 @@ class CoreAttention(nn.Module):
         # Attention(Q, K, V) = softmax((QK^T)/sqrt(d_k))V
         q = q * self.scale
         x = torch.matmul(q, k)  # [b, h, q_len, k_len]
+        score = x
         if attn_bias is not None:
             # attn_bias = attn_bias.repeat(1, self.num_heads, 1, 1)
             x = x + attn_bias
         if mask is not None:
             mask = mask.unsqueeze(1)
             x = x.masked_fill(mask, 0)
+        # score = x
 
         x = torch.softmax(x, dim=3)
         x = self.att_dropout(x)
         x = x.matmul(v)  # [b, h, q_len, attn]
 
         x = x.transpose(1, 2).contiguous()  # [b, q_len, h, attn]
-        return x
+        return x,score
     
 
     def sparse_attention_bias(self, q, k, v, edge_index, attn_bias):
@@ -164,7 +166,7 @@ class CoreAttention(nn.Module):
         batch_size, s_len = q.size(0), q.size(1)
          
         if attn_type == "full":
-            x = self.full_attention(k, q, v, attn_bias)
+            x,score = self.full_attention(k, q, v, attn_bias)
         elif attn_type == "sparse":
             x = self.sparse_attention_bias(q, k, v, edge_index, attn_bias)
         elif attn_type == "flash":
@@ -178,7 +180,7 @@ class CoreAttention(nn.Module):
         # [b, s+p, hp]
         x = x.view(batch_size, s_len, -1)
 
-        return x
+        return x,score
 
 
 class MultiHeadAttention(nn.Module):
@@ -218,7 +220,7 @@ class MultiHeadAttention(nn.Module):
         # ==================================
         # core attention computation
         # ==================================
-        x = self.dist_attn(q, k, v, attn_bias, edge_index, attn_type)
+        x,score = self.dist_attn(q, k, v, attn_bias, edge_index, attn_type)
 
         # =================
         # linear
@@ -227,7 +229,7 @@ class MultiHeadAttention(nn.Module):
         # [b, s/p+1, h]
 
         assert x.size() == orig_q_size
-        return x
+        return x,torch.sum(score,dim=1).squeeze(0)
 
 
 class EncoderLayer(nn.Module):
@@ -257,7 +259,7 @@ class EncoderLayer(nn.Module):
         # MHA
         # ==================================     
         # x: [b, s/p+1, h]
-        y = self.self_attention(x, attn_bias, edge_index=edge_index, attn_type=attn_type)
+        y,score = self.self_attention(x, attn_bias, edge_index=edge_index, attn_type=attn_type)
         y = self.self_attention_dropout(y)
         y = self.O(y)
         x = x + y
@@ -274,7 +276,7 @@ class EncoderLayer(nn.Module):
         x = x + y
         x = self.layer_norm2(x)
 
-        return x
+        return x,score
         
         
 class MLPReadout(nn.Module):
@@ -344,14 +346,16 @@ class GT(nn.Module):
         
         # Graphormer encoder
         # [b, s/p+1, h]
+        score_agg = None
         for enc_layer in self.layers:
-            output = enc_layer(
+            output,score = enc_layer(
                 output, 
                 edge_index=edge_index,
                 attn_type=attn_type,
             ) 
+            score_agg = score if score_agg==None else score_agg+score
         
         # Output part
         output = self.MLP_layer(output[0, :, :]) 
         
-        return F.log_softmax(output, dim=1)
+        return F.log_softmax(output, dim=1),score
