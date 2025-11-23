@@ -9,7 +9,7 @@ class PartitionNode:
         self.parent = parent              # 父分区引用
 
 class PartitionTree:
-    def __init__(self, feature, edge_index, max_depth=2, n_parts=2):
+    def __init__(self, feature, edge_index, train_idx, max_depth=2, n_parts=2):
         self.root = None
         self.tree = {}
         self.partition_counter = 0
@@ -17,6 +17,7 @@ class PartitionTree:
         self.n_parts = n_parts
         self.feature = feature
         self.edge_index = edge_index
+        self.train_idx = train_idx
 
     def _new_partition(self, node_ids, parent=None):
         pid = self.partition_counter
@@ -61,25 +62,53 @@ class PartitionTree:
 
     def get_final_partitions(self):
         """
-        获取最终分区（树的叶子节点）
-        返回: List[torch.Tensor]，每个分区包含的节点索引
+        获取最终分区（树的叶子节点）及其对应的特征
+        
+        参数:
+            train_idx: torch.Tensor, 训练节点的索引。如果提供，则只返回包含这些索引的分区
+        
+        返回:
+            Tuple[List[torch.Tensor], List[torch.Tensor], List[PartitionNode]] - 
+                过滤后的分区节点索引列表、对应的特征张量列表和分区节点对象列表
         """
         final_parts = []
+        final_features = []
         final_nodes = []
+        
         def dfs(node):
             if not node.children:  # 叶子节点
-                final_parts.append(torch.tensor(node.node_ids, dtype=torch.long))
-                final_nodes.append(node)
+                node_indices = torch.tensor(node.node_ids, dtype=torch.long)
+                
+                # 如果提供了train_idx，则过滤出在train_idx中的节点
+                if self.train_idx is not None:
+                    # 创建掩码，标记哪些节点在train_idx中
+                    mask = torch.isin(node_indices, self.train_idx)
+                    filtered_indices = node_indices[mask]
+                    
+                    # 只有当分区中至少有一个训练节点时才保留该分区
+                    if len(filtered_indices) > 0:
+                        # 获取对应的特征
+                        part_features = self.feature[filtered_indices]
+                        final_parts.append(filtered_indices)
+                        final_features.append(part_features)
+                        final_nodes.append(node)
+                else:
+                    # 如果没有提供train_idx，返回所有分区
+                    part_features = self.feature[node_indices]
+                    final_parts.append(node_indices)
+                    final_features.append(part_features)
+                    final_nodes.append(node)
             else:
                 for child in node.children:
                     dfs(child)
 
         dfs(self.root)
-        return final_parts,final_nodes
+        return final_parts, final_features, final_nodes
 
-    def dynamic_windows_globalReassign(self, scores_partitions, nodes):
+    def dynamic_windows_globalReassign(self, scores_partitions, nodes, remove_ratio=0.1):
         """
         全局淘汰池：收集所有分区的淘汰节点，再重新分配到各个窗口
+        不返回任何值，直接更新树结构
         """
         global_removed = []
         kept_dict = {}
@@ -87,7 +116,16 @@ class PartitionTree:
         # 第一步：收集淘汰节点
         for node, scores in zip(nodes, scores_partitions):
             part_nodes = torch.tensor(node.node_ids)
-            keep_mask = scores.sum(dim=1) > 0
+            part_nodes = part_nodes[torch.isin(part_nodes, self.train_idx)]
+            # print(scores)
+            row_sums = scores.abs().sum(dim=1)
+            k = int(remove_ratio * len(row_sums))  # 确保至少保留1个
+            _, indices = torch.topk(row_sums, k, largest=False)
+            keep_mask = torch.ones_like(row_sums, dtype=torch.bool)
+            keep_mask[indices] = False
+            # keep_mask = scores.abs().sum(dim=1) < 0.001  # TODO:阈值计算
+            print(f"node:{part_nodes.shape}, scores:{scores.shape}, mask:{keep_mask.shape}")
+            
             kept_nodes = part_nodes[keep_mask]
             removed_nodes = part_nodes[~keep_mask]
 
@@ -96,25 +134,28 @@ class PartitionTree:
 
         global_removed = torch.tensor(global_removed, dtype=torch.long)
         print(f"global_removed:\n{global_removed}")
+        
         # 第二步：重新分配淘汰节点
-        new_partitions = []
         idx = 0
+        alloc_num = len(global_removed) // len(nodes)
         for node in nodes:
             kept_nodes = kept_dict[node.pid]
             num_needed = len(node.node_ids) - len(kept_nodes)
+            
             # 简单策略：顺序分配
-            supplement = global_removed[idx: idx + num_needed]
-            idx += num_needed
+            supplement = global_removed[idx: idx + alloc_num]
+            idx += alloc_num
 
             new_nodes = torch.cat([kept_nodes, supplement])
             node.node_ids = new_nodes.tolist()
-            new_partitions.append(new_nodes)
+            
+            print(f"分区 {node.pid}: 保留 {len(kept_nodes)} 个节点，补充 {len(supplement)} 个节点")
 
         # 第三步：更新父节点
         for node in nodes:
             self._update_parent(node.parent)
-
-        return new_partitions
+        
+        # 不返回任何值，树结构已更新
 
     def _update_parent(self, parent_node):
         """
@@ -122,10 +163,16 @@ class PartitionTree:
         """
         if parent_node is None:
             return
+        
+        # 收集所有子节点的节点ID
         merged = []
         for child in parent_node.children:
             merged.extend(child.node_ids)
-        parent_node.node_ids = merged
+        
+        # 去重并排序
+        parent_node.node_ids = list(sorted(set(merged)))
+        
+        # 递归更新上级父节点
         self._update_parent(parent_node.parent)
 
     def dynamic_windows_metisParent(self,scores_partitions, nodes):
@@ -176,6 +223,7 @@ if __name__=="__main__":
     # ====== 构造一个简单的图 ======
     # 节点特征 (10个节点，每个节点2维特征)
     feature = torch.randn(10, 2)
+    print(f"feature:\n{feature}")
 
     # 边索引 (无向图)
     edge_index = torch.tensor([
@@ -185,15 +233,18 @@ if __name__=="__main__":
         2, 4, 6, 8, 0]
     ], dtype=torch.long)
 
+    train_idx = torch.tensor([2,3,4,5,6])
+    
     # ====== 构建分区树 ======
-    tree = PartitionTree(feature, edge_index, max_depth=2, n_parts=2)
+    tree = PartitionTree(feature, edge_index, train_idx, max_depth=2, n_parts=2)
     root = tree.partition_nodes_metis()
 
     # ====== 获取最终分区（叶子节点） ======
-    final_parts,final_nodes = tree.get_final_partitions()
+    final_parts,final_feature,final_nodes = tree.get_final_partitions()
     print("初始分区结果：")
     for i, part in enumerate(final_parts):
         print(f"Partition {i}: {part.tolist()}")
+        print(f"feature {i}: {final_feature[i]}")
 
     # ====== 构造模拟的分数矩阵 ======
     # 每个分区一个分数矩阵，大小 = 分区节点数 × 分区节点数
@@ -207,8 +258,9 @@ if __name__=="__main__":
     for scores in scores_partitions:
         print(scores)
     # ====== 调用动态窗口更新 ======
-    new_partitions = tree.dynamic_window_build(scores_partitions, nodes=final_nodes, mode="globalReassign")
+    tree.dynamic_window_build(scores_partitions, nodes=final_nodes, mode="globalReassign")
     # print(new_partitions)
+    new_parts,new_feature,new_nodes = tree.get_final_partitions()
     print("\n动态更新后的分区结果：")
-    for i, part in enumerate(new_partitions):
+    for i, part in enumerate(new_parts):
         print(f"Partition {i}: {part.tolist()}")
