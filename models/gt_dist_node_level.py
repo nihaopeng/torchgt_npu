@@ -229,7 +229,7 @@ class MultiHeadAttention(nn.Module):
         # [b, s/p+1, h]
 
         assert x.size() == orig_q_size
-        return x,torch.sum(score,dim=1).squeeze(0)
+        return x,torch.sum(torch.abs(score), dim=1).squeeze(0)# 对分数的绝对值求和，考虑正负数都起作用
 
 
 class EncoderLayer(nn.Module):
@@ -353,7 +353,7 @@ class GT(nn.Module):
                 edge_index=edge_index,
                 attn_type=attn_type,
             ) 
-            score_agg = score if score_agg==None else score_agg+score
+            score_agg = score if score_agg==None else score_agg+score # 返回的score已经是绝对值了
         
         # Output part
         output = self.MLP_layer(output[0, :, :]) 

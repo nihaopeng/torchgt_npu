@@ -151,6 +151,7 @@ def main():
             power=1.0)
     
     val_acc_list, test_acc_list, epoch_t_list = [], [], []
+    best_model, best_val, best_test = None, float('-inf'), float('-inf')
     
     # 在训练开始前创建或清空CSV文件并写入表头
     import csv
@@ -180,7 +181,7 @@ def main():
             t1 = time.time()
             # out_i,score = model(x_i, attn_bias, edge_index_i, attn_type=attn_type)
             out_i,score = model(metis_partition_feature[i].to(device), None, None, attn_type=attn_type)
-            print(f"out_i:{out_i.shape},y[metis_partition_parts[i]]:{y[metis_partition_parts[i]].shape}")
+            # print(f"out_i:{out_i.shape},y[metis_partition_parts[i]]:{y[metis_partition_parts[i]].shape}")
             loss = F.nll_loss(out_i, y[metis_partition_parts[i]].to(device).long())
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
@@ -204,6 +205,7 @@ def main():
         lr_scheduler.step()
         
         if (epoch+1) % 20 == 0:
+            print(f"score:{scores[0]}")
             partitionTree.dynamic_window_build(scores,metis_partition_nodes)
         
         if epoch > 4 and args.rank == 0:  
@@ -238,17 +240,6 @@ def main():
             
             val_acc_list.append(val_acc)
             test_acc_list.append(test_acc)
-
-        # Notify other ranks on the beta change           
-        if args.rank == 0:
-            beta_idx_broad = torch.LongTensor([beta_idx]).to(device)
-        else:
-            beta_idx_broad = torch.empty(1, dtype=torch.int64, device=device)
-
-        dist.barrier()
-        if seq_parallel_world_size > 1:
-            dist.broadcast(beta_idx_broad, src_rank, group=group)
-        beta_idx = int(beta_idx_broad.item())
 
     if args.rank == 0:
         print("Best validation accuracy: {:.2%}, test accuracy: {:.2%}".format(best_val, best_test))
