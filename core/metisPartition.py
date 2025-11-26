@@ -119,9 +119,9 @@ class PartitionTree:
             part_nodes = part_nodes[torch.isin(part_nodes, self.train_idx)]
             # print(scores)
             row_sums = scores.abs().sum(dim=1)
-            k = int(remove_ratio * len(row_sums))  # 确保至少保留1个
+            k = int(remove_ratio * len(row_sums))
             _, indices = torch.topk(row_sums, k, largest=False)
-            keep_mask = torch.ones_like(row_sums, dtype=torch.bool)
+            keep_mask = torch.ones_like(row_sums, dtype=torch.bool).to(part_nodes.device)
             keep_mask[indices] = False
             # keep_mask = scores.abs().sum(dim=1) < 0.001  # TODO:阈值计算
             print(f"node:{part_nodes.shape}, scores:{scores.shape}, mask:{keep_mask.shape}")

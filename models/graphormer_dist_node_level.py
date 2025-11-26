@@ -1,5 +1,4 @@
 import torch
-import torch_npu
 import math
 import torch.nn as nn
 from torch.nn import functional as F

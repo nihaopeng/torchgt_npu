@@ -1,7 +1,6 @@
 import random
 import os
 import time
-import torch_npu
 import numpy as np
 import torch
 from datetime import timedelta
@@ -23,7 +22,7 @@ _LAST_BATCH_FLAG = False
 
 def initialize_distributed(args):
     """Initialize torch.distributed and core model parallel."""
-    device_count = torch_npu.npu.device_count()
+    device_count = torch.cuda.device_count()
     assert device_count != 0, 'expected PU number > 0.'
     if torch.distributed.is_initialized():
         if torch.distributed.get_rank() == 0:
@@ -46,7 +45,7 @@ def initialize_distributed(args):
                     'expected local-rank to be the same as rank % device-count.'
             else:
                 args.local_rank = device
-            torch_npu.npu.set_device(device)
+            torch.cuda.set_device(device)
     
     global _GLOBAL_TOKEN_NUM
     _GLOBAL_TOKEN_NUM = args.num_global_node

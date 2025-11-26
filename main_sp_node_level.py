@@ -1,5 +1,4 @@
 import torch
-import torch_npu
 import torch.nn.functional as F
 import numpy as np
 from models.graphormer_dist_node_level import Graphormer
@@ -35,14 +34,14 @@ def main():
    
     # Initialize distributed 
     initialize_distributed(args)
-    device = f'npu:{torch_npu.npu.current_device()}' 
+    device = f'cuda:{torch.cuda.current_device()}' 
     
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     
-    if torch_npu.npu.is_available():
-        torch_npu.npu.manual_seed_all(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
     
     if args.rank == 0:
         os.makedirs(args.model_dir, exist_ok=True)
@@ -72,7 +71,7 @@ def main():
     train_idx = split_idx['train']
     
     if args.rank == 0:
-        flatten_train_idx = train_idx.to('npu')
+        flatten_train_idx = train_idx.to('cuda')
     else:
         total_numel = train_idx.numel()
         flatten_train_idx = torch.empty(total_numel,
@@ -158,7 +157,7 @@ def main():
     csv_file = "training_log.csv"
     with open(csv_file, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['Epoch', 'Loss', 'Time'])
+        writer.writerow(['Epoch', 'Loss', 'Time', 'Train acc', 'Val acc', 'Test acc'])
     
     # =================== metis partition =========================
     partitionTree = PartitionTree(feature,edge_index,train_idx,4)
@@ -208,14 +207,16 @@ def main():
             print(f"score:{scores[0]}")
             partitionTree.dynamic_window_build(scores,metis_partition_nodes)
         
+        csv_content = []
+        
         if epoch > 4 and args.rank == 0:  
             epoch_t_list.append(np.sum(iter_t_list))
             print("------------------------------------------------------------------------------------")
             print("Epoch: {:03d}, Loss: {:.4f}, Epoch Time: {:.3f}s".format(epoch, np.mean(loss_list), np.mean(epoch_t_list)))
             # 在每个epoch结束后写入数据
-            with open(csv_file, 'a', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow([epoch, np.mean(loss_list), np.mean(epoch_t_list)])
+            csv_content.append(epoch)
+            csv_content.append(np.mean(loss_list))
+            csv_content.append(np.mean(epoch_t_list))
             print("------------------------------------------------------------------------------------")
 
         if args.rank == 0 and epoch % 5 == 0:   
@@ -228,8 +229,11 @@ def main():
             print(f'Eval time {t5-t4}s')
             print("Epoch: {:03d}, Loss: {:4f}, Train acc: {:.2%}, Val acc: {:.2%}, Test acc: {:.2%}, Epoch Time: {:.3f}s".format(
                 epoch, np.mean(loss_list), train_acc, val_acc, test_acc, np.mean(epoch_t_list)))
+            csv_content.append(train_acc)
+            csv_content.append(val_acc)
+            csv_content.append(test_acc)
             print("------------------------------------------------------------------------------------")
-            
+        
             if val_acc > best_val:
                 best_val = val_acc
                 if args.save_model:
@@ -240,13 +244,18 @@ def main():
             
             val_acc_list.append(val_acc)
             test_acc_list.append(test_acc)
-
+            
+        with open(csv_file, 'a', newline='') as f:
+            writer = csv.writer(f)
+            if csv_content:
+                writer.writerow(csv_content)
+    
     if args.rank == 0:
         print("Best validation accuracy: {:.2%}, test accuracy: {:.2%}".format(best_val, best_test))
 
         if not os.path.exists(f'./exps/{args.dataset}'): 
             os.makedirs(f'./exps/{args.dataset}')
-            
+        
         if args.attn_type != "hybrid":
             if args.reorder:
                 np.save(f'./exps/{args.dataset}/{args.model}{args.hidden_dim}_{str(args.attn_type)}_reorder_s{args.seq_len}_e{args.epochs}_sp{args.world_size}_test-fp16', np.array(test_acc_list))
