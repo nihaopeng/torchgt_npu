@@ -16,20 +16,23 @@ import networkx as nx
 import itertools
 from torch.utils.data import DataLoader, SubsetRandomSampler
 from torch_geometric.utils import to_undirected, remove_self_loops, add_self_loops, subgraph
-# from gt_sp.initialize import (
-#     sequence_parallel_is_initialized,
-#     get_sequence_parallel_group,
-#     get_sequence_parallel_world_size,
-#     get_sequence_parallel_rank,
-#     get_sequence_parallel_src_rank,
-#     get_sequence_length_per_rank,
-#     set_global_token_indices,
-#     get_global_token_indices,
-#     get_global_token_num,
-#     last_batch_flag,
-#     get_last_batch_flag,
-# )
+from gt_sp.initialize import (
+    sequence_parallel_is_initialized,
+    get_sequence_parallel_group,
+    get_sequence_parallel_world_size,
+    get_sequence_parallel_rank,
+    get_sequence_parallel_src_rank,
+    get_sequence_length_per_rank,
+    set_global_token_indices,
+    get_global_token_indices,
+    get_global_token_num,
+    last_batch_flag,
+    get_last_batch_flag,
+)
 from typing import List, Tuple, Optional, Dict
+
+# 暂存模型训练过程中的 Attention 分数
+SCORES_COLLECTOR = []
 
 def fix_edge_index(x, num_node):
     # Add new edges of virtual nodes
@@ -1297,7 +1300,7 @@ def dynamic_window_build(
         root_TreeNode: PartitionTreeNode, metis分区树根
         partitions: List[List[id_x]], 当前叶子分区的目标顶点索引
         feature:torch.Tensor,当前特征
-        threshold: float, 阈值
+        threshold: float, 比例阈值，只要得分低于当前分区平均水平的 X%，踢出
         mode: str,模式
             
     输出:
@@ -1315,18 +1318,28 @@ def dynamic_window_build(
         # 跳过空叶子 和 非叶子
         if leaf_treenode.is_leaf() == False or len(filtered_idlist) == 0:
             continue
-          
+        
+        node_scores = torch.sum(score_matrix, dim=0)
+        avg_node_score = torch.mean(node_scores)
+        threshold_score = avg_node_score * threshold
+        kick_mask = node_scores < threshold_score
+        kick_indices = torch.nonzero(kick_mask).squeeze(1).tolist()
+
+        
         nodes_to_keep: List[int] = []
         nodes_to_kick: List[int] = []
         
-        # 遍历叶子中的每个节点计算其分数
-        for idx, node_id in enumerate(filtered_idlist):
-            score = torch.sum(score_matrix[:, idx])
-            # 将 tensor 转为 (float/int)
-            if score.item() < threshold:
-                nodes_to_kick.append(node_id)
-            else:
-                nodes_to_keep.append(node_id)
+        if not kick_indices:
+            nodes_to_keep = filtered_idlist
+        else:
+            kick_set_indices = set(kick_indices)
+            for idx, node_id in enumerate(filtered_idlist):
+                if idx in kick_set_indices:
+                    nodes_to_kick.append(node_id)
+                else:
+                    nodes_to_keep.append(node_id)
+        
+        
                 
         # 更新叶子分区节点自己
         kick_set = set(nodes_to_kick)
@@ -1353,7 +1366,7 @@ def dynamic_window_build(
         recursively_rebalance_attention(
             root_TreeNode, 
             feature,
-            threshold,
+            threshold_score,
             origin_map# 如果该节点和所有叶子分区计算attention都达不到阈值，就回到最原始的叶子分区
         )
     
@@ -1387,134 +1400,133 @@ def dynamic_window_build(
 
 
 
+# if __name__ == "__main__":
+    
+#     # 1. --- (设置参数) ---
+#     print("="*40)
+#     print("--- 1. 正在生成测试数据 ---")
+#     print("="*40)
+    
+#     N = 1000  # 1000 个节点
+#     E = 5000  # 5000 条边
+#     DIM = 64  # 64 维特征
+    
+#     K_CHA = 2      # 2 叉树
+#     MAX_DEPTH = 3  # 树深度为 3 (将产生 2^3 = 8 个叶子)
+#     THRESHOLD_ATTN = 28 # 阈值
+    
+#     TRAIN_RATIO = 0.5 # 50% 的节点是训练节点
 
-if __name__ == "__main__":
+#     # 2. --- (生成数据) ---
+#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     print(f"  ... 使用设备: {device}")
     
-    # 1. --- (设置参数) ---
-    print("="*40)
-    print("--- 1. 正在生成测试数据 ---")
-    print("="*40)
+#     feature = torch.rand((N, DIM)).to(device)
+#     g = dgl.rand_graph(N, E)
+#     edge_index = torch.stack(g.edges())
     
-    N = 1000  # 1000 个节点
-    E = 5000  # 5000 条边
-    DIM = 64  # 64 维特征
+#     # 生成训练集 (train_idx)
+#     indices = torch.randperm(N).to(device)
+#     train_nodes_count = int(N * TRAIN_RATIO)
+#     train_idx = indices[:train_nodes_count]
     
-    K_CHA = 2      # 2 叉树
-    MAX_DEPTH = 3  # 树深度为 3 (将产生 2^3 = 8 个叶子)
-    THRESHOLD_ATTN = 28 # 阈值
-    
-    TRAIN_RATIO = 0.5 # 50% 的节点是训练节点
+#     print(f"  图: {N} 节点, {E} 边, {DIM} 维特征")
+#     print(f"  树: K={K_CHA}, Depth={MAX_DEPTH} (预期 {K_CHA**MAX_DEPTH} 个叶子)")
+#     print(f"  数据: {len(train_idx)} 个训练节点")
+#     print("\n")
 
-    # 2. --- (生成数据) ---
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"  ... 使用设备: {device}")
+#     # 3. --- (测试 partition_nodes_metis) ---
+#     print("="*40)
+#     print(f"--- 2. 测试 partition_nodes_metis (K={K_CHA}, D={MAX_DEPTH}) ---")
+#     print("="*40)
     
-    feature = torch.rand((N, DIM)).to(device)
-    g = dgl.rand_graph(N, E)
-    edge_index = torch.stack(g.edges())
+#     (train_leaves_features, 
+#      train_leaves_ids, 
+#      root) = partition_nodes_metis(
+#                     feature, 
+#                     edge_index,
+#                     max_depth=MAX_DEPTH,
+#                     num_partitions=K_CHA,
+#                     train_idx=train_idx # (我们传入了 train_idx)
+#                 )
     
-    # 生成训练集 (train_idx)
-    indices = torch.randperm(N).to(device)
-    train_nodes_count = int(N * TRAIN_RATIO)
-    train_idx = indices[:train_nodes_count]
+#     print("\n--- partition_nodes_metis 结果: ---")
+#     print(f"  树根: {root}")
+#     print(f"  根的孩子: {root.children}")
+#     print(f"  返回了 {len(train_leaves_ids)} 个叶子分区 (应为 {K_CHA**MAX_DEPTH})")
     
-    print(f"  图: {N} 节点, {E} 边, {DIM} 维特征")
-    print(f"  树: K={K_CHA}, Depth={MAX_DEPTH} (预期 {K_CHA**MAX_DEPTH} 个叶子)")
-    print(f"  数据: {len(train_idx)} 个训练节点")
-    print("\n")
-
-    # 3. --- (测试 partition_nodes_metis) ---
-    print("="*40)
-    print(f"--- 2. 测试 partition_nodes_metis (K={K_CHA}, D={MAX_DEPTH}) ---")
-    print("="*40)
+#     # 计算并打印总共分了多少 *训练* 节点
+#     total_nodes_in_leaves = sum(len(p) for p in train_leaves_ids)
+#     print(f"  叶子中总共包含 {total_nodes_in_leaves} 个 *训练* 节点 (应为 {len(train_idx)})")
     
-    (train_leaves_features, 
-     train_leaves_ids, 
-     root) = partition_nodes_metis(
-                    feature, 
-                    edge_index,
-                    max_depth=MAX_DEPTH,
-                    num_partitions=K_CHA,
-                    train_idx=train_idx # (我们传入了 train_idx)
-                )
+#     # 打印叶子 (的训练节点)
+#     for i in range(len(train_leaves_ids)):
+#         print(f"    - 叶子 {i}: {len(train_leaves_ids[i])} 个节点, 特征 shape: {train_leaves_features[i].shape}")
+#     print("\n")
     
-    print("\n--- partition_nodes_metis 结果: ---")
-    print(f"  树根: {root}")
-    print(f"  根的孩子: {root.children}")
-    print(f"  返回了 {len(train_leaves_ids)} 个叶子分区 (应为 {K_CHA**MAX_DEPTH})")
+#     # 4. --- (生成的 Attention 分数) ---
+#     print("="*40)
+#     print("--- 3. 正在生成的 Attention 分数 ---")
+#     print("="*40)
     
-    # 计算并打印总共分了多少 *训练* 节点
-    total_nodes_in_leaves = sum(len(p) for p in train_leaves_ids)
-    print(f"  叶子中总共包含 {total_nodes_in_leaves} 个 *训练* 节点 (应为 {len(train_idx)})")
-    
-    # 打印叶子 (的训练节点)
-    for i in range(len(train_leaves_ids)):
-        print(f"    - 叶子 {i}: {len(train_leaves_ids[i])} 个节点, 特征 shape: {train_leaves_features[i].shape}")
-    print("\n")
-    
-    # 4. --- (生成的 Attention 分数) ---
-    print("="*40)
-    print("--- 3. 正在生成的 Attention 分数 ---")
-    print("="*40)
-    
-    scores_partitions = []
-    # (我们必须遍历训练的节点 ID 列表来生成分数)
-    for id_list in train_leaves_ids:
-        P_i = len(id_list) # (P_i 现在是 *训练* 节点的数量)
-        if P_i > 0:
-            # 生成 (0, 1) 之间的随机分数
-            fake_score_matrix = torch.rand((P_i, P_i)).to(device)
-            scores_partitions.append(fake_score_matrix)
-        else:
-            # 这个叶子没有训练节点
-            scores_partitions.append(torch.empty(0, 0).to(device))
+#     scores_partitions = []
+#     # (我们必须遍历训练的节点 ID 列表来生成分数)
+#     for id_list in train_leaves_ids:
+#         P_i = len(id_list) # (P_i 现在是 *训练* 节点的数量)
+#         if P_i > 0:
+#             # 生成 (0, 1) 之间的随机分数
+#             fake_score_matrix = torch.rand((P_i, P_i)).to(device)
+#             scores_partitions.append(fake_score_matrix)
+#         else:
+#             # 这个叶子没有训练节点
+#             scores_partitions.append(torch.empty(0, 0).to(device))
             
-    print(f"为 {len(scores_partitions)} 个训练节点叶子生成了分数。\n")
+#     print(f"为 {len(scores_partitions)} 个训练节点叶子生成了分数。\n")
     
-    # # 5. --- (测试 dynamic_window_build) ---
-    # print("="*40)
-    # print(f"--- 4. 测试 dynamic_window_build (Mode 1: Attention) ---")
-    # print("="*40)
+#     # # 5. --- (测试 dynamic_window_build) ---
+#     # print("="*40)
+#     # print(f"--- 4. 测试 dynamic_window_build (Mode 1: Attention) ---")
+#     # print("="*40)
     
-    # (new_features_m1, new_ids_m1) = dynamic_window_build(
-    #     scores_partitions=scores_partitions,
-    #     root_TreeNode=root, # (我们传入刚构建的"完整"树)
-    #     partitions=train_leaves_ids, # (我们传入"过滤后"的ID列表)
-    #     feature=feature,
-    #     threshold=THRESHOLD_ATTN,
-    #     mode='1'
-    # )
+#     # (new_features_m1, new_ids_m1) = dynamic_window_build(
+#     #     scores_partitions=scores_partitions,
+#     #     root_TreeNode=root, # (我们传入刚构建的"完整"树)
+#     #     partitions=train_leaves_ids, # (我们传入"过滤后"的ID列表)
+#     #     feature=feature,
+#     #     threshold=THRESHOLD_ATTN,
+#     #     mode='1'
+#     # )
     
-    # print("\n--- dynamic_window_build (Mode 1) 结果: ---")
-    # print(f"  返回了 {len(new_ids_m1)} 个新叶子分区")
+#     # print("\n--- dynamic_window_build (Mode 1) 结果: ---")
+#     # print(f"  返回了 {len(new_ids_m1)} 个新叶子分区")
     
 
-    # # 打印新叶子
-    # for i in range( len(new_ids_m1)):
-    #     print(f"    - 新叶子 {i}: {len(new_ids_m1[i])} 个节点, 特征 shape: {new_features_m1[i].shape}")
+#     # # 打印新叶子
+#     # for i in range( len(new_ids_m1)):
+#     #     print(f"    - 新叶子 {i}: {len(new_ids_m1[i])} 个节点, 特征 shape: {new_features_m1[i].shape}")
     
     
     
     
-    print("="*40)
-    print(f"--- 4. 测试 dynamic_window_build (Mode 0: Random) ---") # [修改]
-    print("="*40)
+#     print("="*40)
+#     print(f"--- 4. 测试 dynamic_window_build (Mode 0: Random) ---") # [修改]
+#     print("="*40)
     
-    (new_features_m0, new_ids_m0) = dynamic_window_build(
-        scores_partitions=scores_partitions,
-        root_TreeNode=root, 
-        partitions=train_leaves_ids, 
-        feature=feature,
-        threshold=THRESHOLD_ATTN, 
-        mode='0' 
-    )
+#     (new_features_m0, new_ids_m0) = dynamic_window_build(
+#         scores_partitions=scores_partitions,
+#         root_TreeNode=root, 
+#         partitions=train_leaves_ids, 
+#         feature=feature,
+#         threshold=THRESHOLD_ATTN, 
+#         mode='0' 
+#     )
     
-    print("\n--- dynamic_window_build (Mode 0) 结果: ---")
-    print(f"  返回了 {len(new_ids_m0)} 个新叶子分区")
+#     print("\n--- dynamic_window_build (Mode 0) 结果: ---")
+#     print(f"  返回了 {len(new_ids_m0)} 个新叶子分区")
     
-    # 打印新叶子
-    for i in range(len(new_ids_m0)):
-        print(f"    - 新叶子 {i}: {len(new_ids_m0[i])} 个节点, 特征 shape: {new_features_m0[i].shape}")
+#     # 打印新叶子
+#     for i in range(len(new_ids_m0)):
+#         print(f"    - 新叶子 {i}: {len(new_ids_m0[i])} 个节点, 特征 shape: {new_features_m0[i].shape}")
 
     
 

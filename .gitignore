@@ -2,3 +2,8 @@ TorchGT/
 model_ckpt/
 dataset/
 __pycache__/
+exps/
+
+*_log.txt
+*.log
+*.txt

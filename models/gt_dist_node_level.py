@@ -16,6 +16,8 @@ from torch_scatter import scatter
 from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
 
 
+from gt_sp.utils import SCORES_COLLECTOR
+
 def init_params(module, n_layers):
     if isinstance(module, nn.Linear):
         module.weight.data.normal_(mean=0.0, std=0.02 / math.sqrt(n_layers))
@@ -53,7 +55,7 @@ class CoreAttention(nn.Module):
 
     def full_attention(self, k, q, v, attn_bias, mask=None):
         # ===================================
-        # Raw attention scores. [b, np, s+1, s+1]
+        # Raw attention scores. [b(batch), np(num of head), s+1(seq_len+1), s+1]
         # ===================================
         q = q.transpose(1, 2)   # [b, np, s+1, hn]
         v = v.transpose(1, 2)  # [b, np, s+1, hn]
@@ -63,6 +65,20 @@ class CoreAttention(nn.Module):
         # Attention(Q, K, V) = softmax((QK^T)/sqrt(d_k))V
         q = q * self.scale
         x = torch.matmul(q, k)  # [b, h, q_len, k_len]
+        
+        
+        # =======================================================
+        # [新增] 复用内部数据：保存 Full Attention 分数
+        # =======================================================
+        if self.training:
+            with torch.no_grad():
+                # 多头求和
+                # [Batch, Heads, s+1, s+1] -> [Batch, s+1, s+1]
+                score_sum = x.sum(dim=1)
+                SCORES_COLLECTOR.append(score_sum.squeeze(0).detach())
+        # =======================================================
+        
+        
         if attn_bias is not None:
             # attn_bias = attn_bias.repeat(1, self.num_heads, 1, 1)
             x = x + attn_bias
@@ -320,7 +336,7 @@ class GT(nn.Module):
         x = x.unsqueeze(0) 
         n_graph = x.shape[0] 
         
-        # [bs, s/p, x_d] -> [bs, s/p, h]
+        # [bs, s/p, x_d] -> [bs, s/p, h](h = hidden dim)
         node_feature = self.node_encoder(x)     
         
         output = self.input_dropout(node_feature)

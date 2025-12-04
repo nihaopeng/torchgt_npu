@@ -22,10 +22,18 @@ from gt_sp.initialize import (
 )
 from gt_sp.reducer import sync_params_and_buffers, Reducer
 from gt_sp.evaluate import sparse_eval_gpu
-from gt_sp.utils import random_split_idx, get_batch_reorder_blockize, check_conditions
+from gt_sp.utils import (
+    random_split_idx, 
+    get_batch_reorder_blockize, 
+    check_conditions,
+    partition_nodes_metis, 
+    dynamic_window_build,
+    PartitionTreeNode,
+    SCORES_COLLECTOR
+)
 from utils.parser_node_level import parser_add_main_args
 from collections import deque
-
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 def main():
     parser = argparse.ArgumentParser(description='TorchGT node-level training arguments.')
     parser_add_main_args(parser)
@@ -52,8 +60,13 @@ def main():
 
     if args.dataset == 'pokec':
         y = torch.clamp(y, min=0) 
+        
+    # frac_train=0.6：60% 的节点用于训练
+    # frac_valid=0.2：20% 的节点用于验证。
+    # frac_test=0.2：20% 的节点用于测试（最终评估）。
     split_idx = random_split_idx(y, frac_train=0.6, frac_valid=0.2, frac_test=0.2, seed=args.seed)
 
+    # 判断当前是否是主进程 Master Process，通常是第 0 号 GPU）
     if args.rank == 0:
         print(args)
         print('Dataset load successfully')
@@ -61,29 +74,36 @@ def main():
         print(f"Training iters: {split_idx['train'].size(0) // args.seq_len + 1}, Val iters: {split_idx['valid'].size(0) // args.seq_len + 1}, Test iters: {split_idx['test'].size(0) // args.seq_len + 1}")
     
     # Broadcast train indexes to all ranks 
+    # 检查当前是不是在多卡并行模式。如果是单卡，world_size 就是 1
     seq_parallel_world_size = get_sequence_parallel_world_size() if sequence_parallel_is_initialized() else 1
     if seq_parallel_world_size > 1:
         src_rank = get_sequence_parallel_src_rank()
         group = get_sequence_parallel_group()
 
     train_idx = split_idx['train']
-    if args.rank == 0:
-        flatten_train_idx = train_idx.to('cuda')
+    # Rank 0 主卡把训练集的节点索引（train_idx）放到显存里
+    # Rank > 0的其他卡创建一个同样大小的空容器，准备接收数据
+    if args.rank == 0: 
+        flatten_train_idx = train_idx.to(device)
     else:
         total_numel = train_idx.numel()
         flatten_train_idx = torch.empty(total_numel,
                                 device=device,
                                 dtype=torch.int64)
     # Broadcast
+    # 同步操作,主卡把 flatten_train_idx 发送给所有其他卡
+    # 这一步结束后,所有卡上的 flatten_train_idx 一致
     if seq_parallel_world_size > 1:
         dist.broadcast(flatten_train_idx, src_rank, group=group)
 
     # Initialize global token indices
+    # 计算每张卡应该负责序列中的哪一部分,设置每张卡的offset
     seq_len_per_rank = get_sequence_length_per_rank()
     sub_real_seq_len = seq_len_per_rank + args.num_global_node
     global_token_indices = list(range(0, seq_parallel_world_size * sub_real_seq_len, sub_real_seq_len))
 
     # Last batch fix sequence length
+    # 处理最后一个 Batch,通常数据集的总长度无法被 Batch Size 整除
     if flatten_train_idx.shape[0] % args.seq_len != 0:
         last_batch_node_num = flatten_train_idx.shape[0] % args.seq_len
         if last_batch_node_num % seq_parallel_world_size != 0:
@@ -117,7 +137,7 @@ def main():
         ).to(device)
     elif args.model == "gt":
         model = GT(
-           n_layers=args.n_layers,
+            n_layers=args.n_layers,
             num_heads=args.num_heads,
             input_dim=feature.shape[1],
             hidden_dim=args.hidden_dim,
@@ -134,10 +154,13 @@ def main():
         print('Model params:', sum(p.numel() for p in model.parameters()))
 
     # Sync params and buffers. Ensures all rank models start off at the same value
+    # 同步不同显卡上的模型初始状态
     if seq_parallel_world_size > 1:
         sync_params_and_buffers(model)
     
+    # AdamW优化器
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.peak_lr, weight_decay=args.weight_decay)
+    # 多项式衰减learning rate 策略
     lr_scheduler = PolynomialDecayLR(
             optimizer,
             warmup=args.warmup_updates,
@@ -146,9 +169,10 @@ def main():
             end_lr=args.end_lr,
             power=1.0)
     
+    # 验证集准确率、测试集准确率和训练耗时
     val_acc_list, test_acc_list, epoch_t_list = [], [], []
     best_model, best_val, best_test = None, float('-inf'), float('-inf')
-
+    # flatten_train_idx.size(0) 表示训练节点数，batch size == args.seq_len，num_batch是batch数
     num_batch = flatten_train_idx.size(0) // args.seq_len + 1
 
     compare_ldr = deque([0, 0, 0, 0, 0]) 
@@ -165,12 +189,28 @@ def main():
             percent_list  = [(i + 1) / args.switch_freq for i in range(args.switch_freq)]
             switch_points = [int(num_batch * percentage) for percentage in percent_list]
         iter = 1
-        
-        for i in range(num_batch):
-            idx_i = flatten_train_idx[i*args.seq_len: (i+1)*args.seq_len]
-            packed_data = get_batch_reorder_blockize(args, feature, y, idx_i.to("cpu"), sub_split_seq_lens, device, edge_index, N, k=8, block_size=16, beta_coeffi=beta_coeffi_list[beta_idx])
+        print(f"batch num {num_batch},batch size {args.seq_len}")
 
-            x_i, y_i, edge_index_i, attn_bias = packed_data
+        for i in range(num_batch):
+
+            # idx_i = flatten_train_idx[i*args.seq_len: (i+1)*args.seq_len]
+            # packed_data = get_batch_reorder_blockize(args, feature, y, idx_i.to("cpu"), sub_split_seq_lens, device, edge_index, N, k=8, block_size=16, beta_coeffi=beta_coeffi_list[beta_idx])
+
+            # x_i, y_i, edge_index_i, attn_bias = packed_data
+            
+            #---------------------------------modified-------------------------------------
+            idx_i = flatten_train_idx[i*args.seq_len: (i+1)*args.seq_len].to("cpu")
+            x_i = feature[idx_i].to(device)
+            y_i = y[idx_i].to(device)
+            mapping = torch.full((N,), -1, dtype=torch.long)
+            mapping[idx_i] = torch.arange(len(idx_i), dtype=torch.long)
+            source_nodes = edge_index[0]
+            target_nodes = edge_index[1]
+            mask = (mapping[source_nodes] != -1) & (mapping[target_nodes] != -1)
+            edge_index_i = mapping[edge_index[:, mask]].to(device)
+            attn_bias = None
+            #------------------------------------------------------------------------------
+            
             if attn_bias is not None:
                 x_i, y_i, edge_index_i, attn_bias = x_i.to(device), y_i.to(device), edge_index_i.to(device), attn_bias.to(device)
             else:
@@ -197,7 +237,7 @@ def main():
             loss = F.nll_loss(out_i, y_i.long())
             optimizer.zero_grad(set_to_none=True) 
             loss.backward()
-            
+            SCORES_COLLECTOR.clear()
             # Sync all-reduce gradient 
             if seq_parallel_world_size > 1:
                 for name, param in model.named_parameters():
