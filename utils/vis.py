@@ -1,9 +1,9 @@
 import os
 import torch
+import torch.nn.functional as F
 import numpy as np
 import pandas as pd
 from datetime import datetime
-
 def calc_statistic(attention_matrix: torch.Tensor, fig_path: str):
     """
     统计注意力分数方阵的各种指标并可视化，结果累积保存到CSV文件
@@ -29,12 +29,12 @@ def calc_statistic(attention_matrix: torch.Tensor, fig_path: str):
     mask = ~np.eye(n, dtype=bool)
     off_diagonal = attn_np[mask]
     
-    stats['mean'] = np.mean(off_diagonal)
-    stats['std'] = np.std(off_diagonal)
-    stats['variance'] = np.var(off_diagonal)
-    stats['min'] = np.min(off_diagonal)
-    stats['max'] = np.max(off_diagonal)
-    stats['median'] = np.median(off_diagonal)
+    stats['mean'] = np.mean(off_diagonal)       # 均值
+    stats['std'] = np.std(off_diagonal)         # 标准差
+    stats['variance'] = np.var(off_diagonal)    # 方差
+    stats['min'] = np.min(off_diagonal)         # 最小值
+    stats['max'] = np.max(off_diagonal)         # 最大值
+    stats['median'] = np.median(off_diagonal)   # 中位数
     
     # 分位数统计
     stats['q1'] = np.percentile(off_diagonal, 25)
@@ -378,7 +378,7 @@ def analyze_mutual_high_attention(attention_matrix: np.ndarray, partition_ids: n
     
     # 检查相互性
     for i, j, score_ij in high_attention_pairs:
-        # 检查是否存在j->i的高分注意力
+        # 对于高分注意力i->j，检查是否存在j->i的高分注意力
         mutual = False
         score_ji = 0
         for k, score in high_attention_dict[j]:
@@ -483,12 +483,12 @@ def analyze_mutual_high_attention(attention_matrix: np.ndarray, partition_ids: n
         df_result.to_csv(csv_path, index=False)
     
     print(f"\n结果已保存到: {csv_path}")
-    
+      
 def analyze_attention_distance(attention_matrix: np.ndarray, partition_ids: np.ndarray, 
                               edges: np.ndarray, threshold_percentile: float = 90,
                               csv_path: str = "attention_distance_analysis.csv"):
     """
-    分析高分注意力节点对之间的距离分布
+    分析高分注意力节点对之间的距离分布，计算高分注意力节点对邻居的占比
     
     Args:
         attention_matrix: 注意力分数方阵 [num_sub_node_ids, num_sub_node_ids]
@@ -680,7 +680,7 @@ def analyze_attention_distance(attention_matrix: np.ndarray, partition_ids: np.n
             'distance_ratio_vs_random': distance_stats['mean'] / random_mean,
         })
     
-    # 添加不同距离的注意力分数
+    # 添加高分点对中,不同距离的注意力分数数据
     for dist in sorted(distance_attention_stats.keys()):
         if dist <= 5:  # 只保存前5个距离的统计
             stats = distance_attention_stats[dist]
@@ -722,3 +722,464 @@ def analyze_attention_distance(attention_matrix: np.ndarray, partition_ids: np.n
     
     return detailed_results
 
+def analyze_node_coverage(attention_matrix: np.ndarray, threshold_percentile: float = 90, 
+                          csv_path: str = "node_coverage_analysis.csv"):
+    """
+    分析节点的注意力覆盖范围：统计每个节点对"其他"节点产生高分注意力的数量和比例。
+    并将统计结果保存到 CSV 文件。
+    
+    Args:
+        attention_matrix: 注意力分数方阵 [N, N] (numpy array)
+        threshold_percentile: 定义"高分"的分位数 (默认90, 即前10%的分数)
+        csv_path: 结果保存的 CSV 文件路径
+        
+    Returns:
+        dict: 包含覆盖数量和比例的统计信息
+    """
+    n = attention_matrix.shape[0]
+    
+    # 1. 准备数据：提取非对角线元素（关注"其他"顶点）
+    mask_no_diag = ~np.eye(n, dtype=bool)
+    off_diagonal_scores = attention_matrix[mask_no_diag]
+    
+    # 2. 确定"高分"阈值
+    threshold = np.percentile(off_diagonal_scores, threshold_percentile)
+    
+    # 3. 逐行统计：每个节点关注了多少个高分邻居？
+    attn_temp = attention_matrix.copy()
+    np.fill_diagonal(attn_temp, -np.inf)
+    
+    # 统计每行中大于阈值的元素个数
+    high_attn_counts = np.sum(attn_temp > threshold, axis=1)
+    
+    # 4. 计算比例
+    ratios = high_attn_counts / (n - 1) if n > 1 else np.zeros_like(high_attn_counts, dtype=float)
+    
+    # 5. 稀疏性验证指标 (例如：关注 <= 50 个高分节点的节点比例)
+    k_sparse = 50
+    sparse_node_ratio = np.sum(high_attn_counts <= k_sparse) / n
+    
+    # 6. 打印统计报告
+    print("=" * 60)
+    print(f"节点注意力覆盖范围分析 (Top {100-threshold_percentile}%)")
+    print("=" * 60)
+    print(f"高分阈值: > {threshold:.6f}")
+    print(f"[数量统计] 均值: {np.mean(high_attn_counts):.2f}, 中位数: {np.median(high_attn_counts):.0f}")
+    print(f"[比例统计] 平均覆盖率: {np.mean(ratios):.2%}")
+    print(f"[稀疏验证] 关注目标 <= {k_sparse} 的节点比例: {sparse_node_ratio:.2%}")
+    
+    # 7. 准备要保存的数据
+    result_data = {
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'num_nodes': n,
+        'threshold_percentile': threshold_percentile,
+        'threshold_value': threshold,
+        
+        # 数量统计
+        'count_mean': np.mean(high_attn_counts),
+        'count_median': np.median(high_attn_counts),
+        'count_std': np.std(high_attn_counts),
+        'count_min': np.min(high_attn_counts),
+        'count_max': np.max(high_attn_counts),
+        
+        # 比例统计
+        'ratio_mean': np.mean(ratios),
+        'ratio_median': np.median(ratios),
+        'ratio_max': np.max(ratios),
+        
+        # 稀疏性指标
+        'sparse_node_ratio_50': sparse_node_ratio  # 关注少于50个节点的比例
+    }
+    
+    # 8. 保存到 CSV 文件
+    df_result = pd.DataFrame([result_data])
+    
+    # 如果文件不存在，创建新文件并写入表头；如果存在，追加数据
+    try:
+        if not os.path.exists(csv_path):
+            df_result.to_csv(csv_path, index=False)
+        else:
+            df_result.to_csv(csv_path, mode='a', header=False, index=False)
+        print(f"统计结果已保存到: {csv_path}")
+    except Exception as e:
+        print(f"保存 CSV 失败: {e}")
+
+    return {
+        'mean_count': np.mean(high_attn_counts),
+        'mean_ratio': np.mean(ratios),
+        'counts': high_attn_counts 
+    }
+    
+def analyze_incoming_attention(attention_matrix: np.ndarray, threshold_percentile: float = 90, 
+                               csv_path: str = "incoming_attention_analysis.csv"):
+    """
+    统计是否存在某些顶点总是被其他顶点高分注意(核心节点)
+    
+    Args:
+        attention_matrix: 注意力分数方阵 [N, N]
+        threshold_percentile: 定义"高分"的分位数 (默认90)
+        csv_path: 结果保存路径
+        
+    Returns:
+        dict: 统计结果，包含核心节点的比例
+    """
+    n = attention_matrix.shape[0]
+    
+    # 1. 准备数据：提取非对角线元素（排除自注意力，只看"其他"顶点的关注）
+    mask_no_diag = ~np.eye(n, dtype=bool)
+    off_diagonal_scores = attention_matrix[mask_no_diag]
+    
+    # 2. 确定"高分"阈值
+    threshold = np.percentile(off_diagonal_scores, threshold_percentile)
+    
+    # 3. 逐列统计：每个节点被多少个"其他"节点高分关注？ (axis=0 代表列方向，即作为目标节点)
+    attn_temp = attention_matrix.copy()
+    np.fill_diagonal(attn_temp, -np.inf) # 排除对角线干扰
+    
+    # 统计每列中被几个顶点高分关注
+    incoming_counts = np.sum(attn_temp > threshold, axis=0)
+    
+    # 4. 定义"Hub节点" (总是被高分注意的节点)
+    # 标准：被关注次数 > 平均值 
+    mean_val = np.mean(incoming_counts)
+    std_val = np.std(incoming_counts)
+    hub_threshold = mean_val
+    
+    is_hub = incoming_counts > hub_threshold
+    num_hubs = np.sum(is_hub)
+    hub_ratio = num_hubs / n if n > 0 else 0
+    
+    # 5. 打印统计报告
+    print("=" * 60)
+    print(f"节点被关注度分析 (Attention Sinks Analysis)")
+    print("=" * 60)
+    print(f"高分阈值: > {threshold:.6f}")
+    print(f"被关注次数统计 - 均值: {mean_val:.2f}, 最大值: {np.max(incoming_counts)}")
+    print(f"Hub节点定义: 被关注次数 > {hub_threshold:.2f} (均值 + 2σ)")
+    print(f"是否存在Hub节点? {'是' if num_hubs > 0 else '否'}")
+    if num_hubs > 0:
+        print(f"Hub节点数量: {num_hubs}")
+        print(f"Hub节点比例: {hub_ratio:.2%}")
+    
+    # 6. 准备结果数据
+    result_data = {
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'num_nodes': n,
+        'threshold_percentile': threshold_percentile,
+        
+        # 基础统计
+        'incoming_mean': mean_val,
+        'incoming_std': std_val,
+        'incoming_max': np.max(incoming_counts),
+        'incoming_min': np.min(incoming_counts),
+        
+        # Hub 分析
+        'hub_threshold_val': hub_threshold,
+        'num_hubs': num_hubs,
+        'hub_ratio': hub_ratio,
+        
+        # 极端情况：是否有人完全没人高分关注？
+        'zero_high-attention_nodes': np.sum(incoming_counts == 0),
+        'zero_high-attention_ratio': np.sum(incoming_counts == 0) / n
+    }
+    
+    # 7. 保存到 CSV
+    df_result = pd.DataFrame([result_data])
+    try:
+        if not os.path.exists(csv_path):
+            df_result.to_csv(csv_path, index=False)
+        else:
+            df_result.to_csv(csv_path, mode='a', header=False, index=False)
+        print(f"统计结果已保存到: {csv_path}")
+    except Exception as e:
+        print(f"保存 CSV 失败: {e}")
+        
+    return result_data   
+
+
+def generate_mask_by_score(score, ratio=0.1, reserve_self_loop=True):
+    """
+    根据注意力分数动态生成掩码 (Dynamic Masking)。
+    只保留全图中分数最高的前 ratio 比例的连接。
+    
+    Args:
+        score: 注意力分数矩阵 [N, N] (Tensor, 已处理好维度)
+        ratio: 保留比例 (float), 例如 0.1 代表保留 Top 10% 高分边。
+        reserve_self_loop: 是否强制保留自环。
+        
+    Returns:
+        mask: [1, 1, N, N] 的掩码张量，方便直接加到 attn_bias 上。
+    """
+    # 1. 确保是 Tensor
+    if isinstance(score, np.ndarray):
+        score = torch.from_numpy(score)
+    
+    device = torch.device('cpu')
+    N = score.shape[0]
+    
+    # 2. 计算保留数量 (Per-Node K)
+    k = int(N * ratio)
+    k = max(1, min(k, N)) # 至少保留1个，最多N个
+    
+    # 3. 行内筛选 (Row-wise Top-K)
+    # topk_indices: [N, k] -> 每一行保留的列索引
+    _, topk_indices = torch.topk(score, k=k, dim=1)
+    
+    # 4. 构建掩码 (使用高级索引替代 scatter_)
+    # 初始全为 -1e9 (断开)
+    mask = torch.full((N, N), -1e9, device=device)
+    
+    # 构建行索引矩阵 [N, k]
+    # 0, 0, ..., 0
+    # 1, 1, ..., 1
+    # ...
+    row_indices = torch.arange(N, device=device).unsqueeze(1).expand(-1, k)
+    
+    # [核心操作] 高级索引赋值
+    # mask[行坐标, 列坐标] = 0.0
+    mask[row_indices, topk_indices] = 0.0
+    
+    # 5. 强制保留自环
+    if reserve_self_loop:
+        mask.fill_diagonal_(0.0)
+        
+    # 6. 维度适配 [1, 1, N, N]
+    return mask.unsqueeze(0).unsqueeze(0)
+
+def generate_mask_by_neighbor(score, edge_index, ratio=0.5, num_nodes=None,reserve_self_loop=True):
+    """
+    基于邻居的动态掩码 (Neighbor-based Dynamic Masking)。
+    1. 找到它的所有物理邻居。
+    2. 对这些邻居的 Attention Score 进行排序。
+    3. 只保留排名前 (Degree_i * ratio) 的邻居，其余屏蔽。
+    
+    Args:
+        score: 注意力分数 [N, N]
+        edge_index: 物理边索引 [2, E]
+        ratio: 邻居保留比例 (例如 0.5 表示只保留 50% 最好的邻居)
+    """
+    # 1. 准备数据
+    if isinstance(score, np.ndarray):
+        score = torch.from_numpy(score)
+
+    device = torch.device('cpu')
+    N = score.shape[0]
+    
+    # 2. 构建"仅邻居可见"的临时分数矩阵
+    # 初始全为 -inf (非邻居)
+    neighbor_only_score = torch.full((N, N), -float('inf'), device=device)
+    
+    # 只把物理邻居的分数填进去
+    u, v = edge_index
+    neighbor_only_score[u, v] = score[u, v]
+    
+    # 3. 计算每个节点的截断阈值 (Cutoff)
+    # 统计每个节点的出度，bincount 统计每个节点 id 出现了几次，即有多少个邻居。
+    degrees = torch.bincount(u, minlength=N)
+    
+    # 计算每个节点该保留多少个邻居，至少保留 1 个
+    keep_counts = (degrees.float() * ratio).long().clamp(min=1)
+    
+    # 4. 行内排序 (Row-wise Sort)
+    # 对 neighbor_only_score (仅邻居分数矩阵) 的每一行进行降序排列。
+    # _: 排好序的分数 (我们不关心具体几分，只关心排名)。
+    # sorted_indices: [N, N] 索引矩阵。
+    #   第 i 行的内容是：节点 i 的邻居中，第 1 名是谁的索引，第 2 名是谁...
+    _, sorted_indices = torch.sort(neighbor_only_score, dim=1, descending=True)
+    
+    # 5. 生成动态掩码
+
+    # 扩展成 [1, N] 与 keep_counts [N, 1] 做比较
+    col_grid = torch.arange(N, device=device).unsqueeze(0) # [1, N]
+    # keep_counts 是 [5, 2, 1...] -> 扩展成 [N, 1]
+    # 这代表每一行的保留的邻居
+    cutoff_grid = keep_counts.unsqueeze(1)                 # [N, 1]
+    
+    # 核心逻辑：如果当前排位 < 该行应保留的数量，则为 True
+    # 这是一个布尔矩阵 [N, N]，True 代表"该保留的排名位置"
+    keep_rank_mask = col_grid < cutoff_grid
+    
+    # 6. 映射回原始坐标
+    # 我们有了"排第几名该保留"，现在要把"第几名"翻译回"是哪个节点"
+    # valid_rows: 对应的行号
+    # valid_cols: 对应的列号 (即目标节点 ID)
+    
+    # 获取需要保留的位置的行号 (利用广播)
+    rows_expanded = torch.arange(N, device=device).unsqueeze(1).expand(N, N)
+    
+    valid_rows = rows_expanded[keep_rank_mask]
+    valid_cols = sorted_indices[keep_rank_mask]
+    
+    # 7. 构建最终掩码
+    final_mask = torch.full((N, N), -1e9, device=device)
+    final_mask[valid_rows, valid_cols] = 0.0
+    
+    # 8. 强制保留自环
+    if reserve_self_loop:
+        final_mask.fill_diagonal_(0.0)
+        
+    # 9. 维度适配 [1, 1, N, N]
+    return final_mask.unsqueeze(0).unsqueeze(0)
+
+
+# 下面这个先不弄
+def analyze_distance_change(model, optimizer, x, y, edge_index, attn_bias, original_score: np.ndarray, 
+                            steps: int = 500, percentile: float = 90, epoch: int = 0, 
+                            save_dir: str = "distance_change_analysis"):
+    """
+    分析顶点距离改变后的注意力分数变化 
+    Args:
+        model: 模型 
+        optimizer: 优化器
+        x: 节点特征
+        y: 标签
+        edge_index: 边索引
+        attn_bias: 注意力偏置
+        original_score: 原始注意力分数矩阵 [N, N]
+        steps: 微调步数 
+        percentile: 筛选高分对的百分位阈值 (默认90)
+        epoch: 当前训练轮数 (用于文件命名)
+        save_dir: 结果保存目录
+        
+    Returns:
+        list: 训练过程中的分数记录 (trace_records)
+    """
+    model.train()
+    device = x.device
+    N = x.shape[0]
+    max_pairs = N // 2 
+    
+    # 1. 准备数据：筛选互不冲突的高分顶点对
+    # 复制分数矩阵并排除对角线
+    temp_score = original_score.copy()
+    np.fill_diagonal(temp_score, -1) 
+    
+    valid_scores = temp_score[temp_score > -1]
+    if len(valid_scores) == 0:
+        return []
+    
+    # 确定阈值
+    threshold_val = np.percentile(valid_scores, percentile)
+    
+    # 排序索引
+    flat_indices = np.argsort(temp_score.ravel())[::-1]
+    
+    pairs = [] # 格式: (u, v, orig_score)
+    visited = set()
+    
+    for idx in flat_indices:
+        if len(pairs) >= max_pairs: 
+            break
+            
+        u, v = np.unravel_index(idx, temp_score.shape)
+        score_val = temp_score[u, v]
+        
+        if score_val < threshold_val: 
+            break
+        
+        # 确保 u, v 未被占用且不是自环
+        if u not in visited and v not in visited and u != v:
+            pairs.append((u, v, score_val))
+            visited.add(u)
+            visited.add(v)
+            
+    if not pairs:
+        print(f"[Analyze] 未找到满足阈值 ({threshold_val:.4f}) 的高分对")
+        return []
+
+    # 2. 打印实验开始报告
+    print("=" * 60)
+    print(f"距离变化分析 (Distance Change Experiment) - Epoch {epoch}")
+    print("=" * 60)
+    print(f"筛选阈值: Top {100-percentile}% (> {threshold_val:.4f})")
+    print(f"选中对数: {len(pairs)}")
+    print(f"原始均分: {np.mean([p[2] for p in pairs]):.4f}")
+
+    # 3. 保存选中的顶点对信息到 CSV
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        df_pairs = pd.DataFrame([
+            {"timestamp": timestamp, "epoch": epoch, "pair_id": i, "u": u, "v": v, "orig_score": s} 
+            for i, (u, v, s) in enumerate(pairs)
+        ])
+        
+        pairs_csv_path = os.path.join(save_dir, f"epoch_{epoch}_pairs.csv")
+        df_pairs.to_csv(pairs_csv_path, index=False)
+        print(f"顶点对信息已保存到: {pairs_csv_path}")
+
+    # 4. 构建对抗序列 (两端拉伸)
+    new_perm = np.full(N, -1, dtype=int)
+    for i, (u, v, _) in enumerate(pairs):
+        new_perm[i] = u           # 放在序列头部
+        new_perm[N - 1 - i] = v   # 放在序列尾部
+        
+    # 填充剩余位置
+    remaining = [n for n in range(N) if n not in visited]
+    empty_slots = np.where(new_perm == -1)[0]
+    fill_cnt = min(len(remaining), len(empty_slots))
+    new_perm[empty_slots[:fill_cnt]] = remaining[:fill_cnt]
+    
+    perm_tensor = torch.tensor(new_perm, device=device)
+    
+    # 5. 数据重映射 
+    old_to_new = torch.zeros(N, dtype=torch.long, device=device)
+    old_to_new[perm_tensor] = torch.arange(N, device=device)
+    
+    x_perm = x[perm_tensor].clone()
+    y_perm = y[perm_tensor].clone() if y is not None else None
+    edge_index_perm = old_to_new[edge_index].clone()
+    
+    attn_bias_perm = None
+    if attn_bias is not None:
+        attn_bias_perm = attn_bias[perm_tensor][:, perm_tensor].clone()
+
+    # 6. 微调训练并记录过程
+    print(f"开始 {steps} 轮微调追踪...")
+    trace_records = [] 
+    
+    for step in range(steps):
+        optimizer.zero_grad()
+        out, score_tensor = model(x_perm, attn_bias_perm, edge_index_perm, attn_type="full")
+        
+        if y_perm is not None:
+            loss = F.nll_loss(out, y_perm)
+            loss.backward()
+            optimizer.step()
+        
+        # 提取当前分数
+        with torch.no_grad():
+            if score_tensor.dim() == 4: 
+                s = score_tensor[0].mean(dim=0)
+            elif score_tensor.dim() == 3: 
+                s = score_tensor.mean(dim=0)
+            else: 
+                s = score_tensor
+            
+            # 记录每一对在当前 Step 的得分
+            current_vals = []
+            for i in range(len(pairs)):
+                # u 在位置 i, v 在位置 N-1-i
+                val = s[i, N - 1 - i].item()
+                current_vals.append(val)
+                
+                trace_records.append({
+                    "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    "epoch": epoch,
+                    "step": step + 1,
+                    "pair_id": i,
+                    "score": val
+                })
+            
+            avg_curr = np.mean(current_vals)
+            print(f"Step {step+1}: Loss={loss.item():.4f}, Avg Score={avg_curr:.4f}")
+
+    # 7. 保存过程数据到 CSV
+    if save_dir:
+        df_trace = pd.DataFrame(trace_records)
+        trace_csv_path = os.path.join(save_dir, f"epoch_{epoch}_trace.csv")
+        df_trace.to_csv(trace_csv_path, index=False)
+        print(f"过程记录已保存到: {trace_csv_path}")
+        
+    return trace_records

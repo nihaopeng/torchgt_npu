@@ -13,6 +13,8 @@ from gt_sp.initialize import (
     get_global_token_indices,
 )
 from torch_scatter import scatter
+
+from utils.vis import generate_mask_by_score
 # from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
 
 
@@ -51,7 +53,7 @@ class CoreAttention(nn.Module):
     #     return flash_attn_func(q, k, v, self.attention_dropout_rate)
     
 
-    def full_attention(self, k, q, v, attn_bias, mask=None):
+    def full_attention(self, k, q, v, attn_bias, mask=None,pruning_mask=None):
         # ===================================
         # Raw attention scores. [b, np, s+1, s+1]
         # ===================================
@@ -67,6 +69,13 @@ class CoreAttention(nn.Module):
         if attn_bias is not None:
             # attn_bias = attn_bias.repeat(1, self.num_heads, 1, 1)
             x = x + attn_bias
+            
+            
+        # =============采样掩码===========    
+        if pruning_mask is not None:
+            x = x + pruning_mask
+        # ===============================    
+            
         if mask is not None:
             mask = mask.unsqueeze(1)
             x = x.masked_fill(mask, 0)
@@ -140,6 +149,39 @@ class CoreAttention(nn.Module):
         x = wV / (Z + 1e-6)
         
         return x
+    
+    
+        # # ================= [统计score] =================
+        # # 目标：把稀疏的 score 拼成一个 [N, N] 的矩阵返回给 vis.py 用
+        
+        # # 1. 拿到当前的节点数量 (子图大小)
+        # # k 的形状原本是 [batch, node_num, heads, dim]，前面 view 过了
+        # # 这里最稳妥的是用 x 的第一个维度 (total_s)
+        # current_num_nodes = x.size(0) 
+
+        # # 2. 处理多头 (Heads) -> 取平均
+        # # score 目前是 [total_edges, np, 1] (即边的数量, 头数, 1)
+        # # 我们把它变成 [total_edges] 的一维向量
+        # edge_scores_mean = score.mean(dim=1).squeeze() # 取所有头的平均关注度
+
+        # # 3. 创建一个空的稠密矩阵 [N, N]
+        # # 默认填 -1 或 0 (代表没有边)
+        # dense_score_matrix = torch.full((current_num_nodes, current_num_nodes), -1.0, device=x.device)
+        
+        # # 4. 填空：把边上的分数填进矩阵
+        # # edge_index[0] 是源节点 (行), edge_index[1] 是目标节点 (列)
+        # # 注意：这里可能需要转成 long 类型
+        # src_indices = edge_index[0].long()
+        # dst_indices = edge_index[1].long()
+        
+        # # 将分数填入对应坐标
+        # # 注意：如果有重复边可能会覆盖，但在标准图里一般没事
+        # dense_score_matrix[src_indices, dst_indices] = edge_scores_mean
+        # dense_score_matrix_4d = dense_score_matrix.unsqueeze(0).unsqueeze(0)
+        # # ================= [统计score结束] =================
+
+        # # 修改返回值：把这个矩阵也传出去
+        # return x, dense_score_matrix_4d
 
     def naive_attention(self, q, k, v, dropout_p=0.0):
         # q, k, v: [batch, n_heads, seq_len, head_dim]
@@ -158,7 +200,7 @@ class CoreAttention(nn.Module):
         output = torch.matmul(attn_probs, v)
         return output
 
-    def forward(self, q, k, v, attn_bias=None, edge_index=None, attn_type=None):
+    def forward(self, q, k, v, attn_bias=None, edge_index=None, attn_type=None, pruning_mask=None):
         # ===================================
         # Raw attention scores. [b, np, s+1, s+1]
         # ===================================
@@ -166,8 +208,10 @@ class CoreAttention(nn.Module):
         batch_size, s_len = q.size(0), q.size(1)
          
         if attn_type == "full":
-            x,score = self.full_attention(k, q, v, attn_bias)
+            x,score = self.full_attention(k, q, v, attn_bias,pruning_mask=pruning_mask)
         elif attn_type == "sparse":
+            # 这个sparse的score还不清楚是否可以
+            # x,score = self.sparse_attention_bias(q, k, v, edge_index, attn_bias)
             x = self.sparse_attention_bias(q, k, v, edge_index, attn_bias)
         elif attn_type == "flash":
             q = q.half()
@@ -201,7 +245,7 @@ class MultiHeadAttention(nn.Module):
         self.dist_attn = DistributedAttentionNodeLevel(local_attn, get_sequence_parallel_group())
 
 
-    def forward(self, x, attn_bias=None, edge_index=None, attn_type=None):
+    def forward(self, x, attn_bias=None, edge_index=None, attn_type=None,pruning_mask=None):
         # x: [b, s/p+1, h], attn_bias: [b, n_head, s+1, s+1]
         orig_q_size = x.size()
         # =====================
@@ -220,7 +264,7 @@ class MultiHeadAttention(nn.Module):
         # ==================================
         # core attention computation
         # ==================================
-        x,score = self.dist_attn(q, k, v, attn_bias, edge_index, attn_type)
+        x,score = self.dist_attn(q, k, v, attn_bias, edge_index, attn_type,pruning_mask=pruning_mask)
 
         # =================
         # linear
@@ -254,12 +298,12 @@ class EncoderLayer(nn.Module):
         self.layer_norm2 = nn.LayerNorm(hidden_size)
             
             
-    def forward(self, x, attn_bias=None, edge_index=None, attn_type=None):
+    def forward(self, x, attn_bias=None, edge_index=None, attn_type=None,pruning_mask=None):
         # ==================================
         # MHA
         # ==================================     
         # x: [b, s/p+1, h]
-        y,score = self.self_attention(x, attn_bias, edge_index=edge_index, attn_type=attn_type)
+        y,score = self.self_attention(x, attn_bias, edge_index=edge_index, attn_type=attn_type,pruning_mask=pruning_mask)
         y = self.self_attention_dropout(y)
         y = self.O(y)
         x = x + y
@@ -334,7 +378,7 @@ class GT(nn.Module):
         self.apply(lambda module: init_params(module, n_layers=n_layers))
         
         
-    def forward(self, x, attn_bias, edge_index, perturb=None, attn_type=None):
+    def forward(self, x, attn_bias, edge_index, perturb=None, attn_type=None, pruning_mask=None):
         # x -> [bs=1, s/p, x_d]
         x = x.unsqueeze(0) 
         n_graph = x.shape[0] 
@@ -352,6 +396,7 @@ class GT(nn.Module):
                 output, 
                 edge_index=edge_index,
                 attn_type=attn_type,
+                pruning_mask=pruning_mask
             ) 
             score_agg = score if score_agg==None else score_agg+score # 返回的score已经是绝对值了
         

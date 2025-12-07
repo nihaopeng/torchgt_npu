@@ -26,7 +26,65 @@ from gt_sp.utils import random_split_idx, get_batch_reorder_blockize, check_cond
 from utils.parser_node_level import parser_add_main_args
 from collections import deque
 
-from utils.vis import analyze_attention_distance, calc_statistic,edge_attn,analyze_mutual_high_attention
+from utils.vis import (
+    analyze_attention_distance,
+    analyze_incoming_attention,
+    analyze_node_coverage,
+    calc_statistic,
+    edge_attn,
+    analyze_mutual_high_attention,
+    generate_mask_by_score,
+    generate_mask_by_neighbor
+)
+
+def load_raw_data_memory(dataset_dir, dataset_name):
+    """
+    x -> cora.featuretable
+    y -> cora.labeltable
+    edge -> cora.edge (二进制读取)
+    """
+    import pandas as pd
+    import numpy as np
+    
+    root_path = os.path.join(dataset_dir, dataset_name)
+    rank = dist.get_rank() if dist.is_initialized() else 0
+    print(f"[Rank {rank}] Loading raw data from {root_path}...")
+
+    # 1. 加载特征 (x) -> cora.featuretable
+    # 既然之前的报错是在读 edge 时才发生的，说明 featuretable 是文本，可以用 pd 读
+    feat_path = os.path.join(root_path, f'{dataset_name}.featuretable')
+    df_feat = pd.read_csv(feat_path, sep=r'\s+', header=None)
+    
+    if df_feat[0].dtype == 'int64' and df_feat[0].is_unique:
+        x_np = df_feat.iloc[:, 1:].values
+    else:
+        x_np = df_feat.values
+    feature = torch.tensor(x_np, dtype=torch.float)
+
+    # 2. 加载标签 (y) -> cora.labeltable
+    label_path = os.path.join(root_path, f'{dataset_name}.labeltable')
+    df_label = pd.read_csv(label_path, sep=r'\s+', header=None)
+    if df_label.shape[1] > 1:
+        y_np = df_label.iloc[:, 1].values
+    else:
+        y_np = df_label.iloc[:, 0].values
+    y = torch.tensor(y_np, dtype=torch.long)
+
+    # 3. 加载边 (edge_index) -> cora.edge
+    # 【关键修改】这里必须用二进制方式读取，否则必报 UnicodeDecodeError
+    edge_path = os.path.join(root_path, f'{dataset_name}.edge')
+    print(f"[Rank {rank}] Reading binary edge file: {edge_path}")
+    
+    # 读取 int32 二进制数据
+    raw_data = np.fromfile(edge_path, dtype=np.int32)
+    
+    # 重新塑形为 [num_edges, 2] 然后转置为 [2, num_edges]
+    edge_index_np = raw_data.reshape(-1, 2).T
+    edge_index = torch.tensor(edge_index_np, dtype=torch.long)
+
+    return feature, y, edge_index
+
+
 
 def main():
     parser = argparse.ArgumentParser(description='TorchGT node-level training arguments.')
@@ -47,10 +105,21 @@ def main():
         os.makedirs(args.model_dir, exist_ok=True)
     
     # Dataset 
-    feature = torch.load(args.dataset_dir + args.dataset + '/x.pt') # [N, x_dim]
-    y = torch.load(args.dataset_dir + args.dataset + '/y.pt') # [N]
-    edge_index = torch.load(args.dataset_dir + args.dataset + '/edge_index.pt') # [2, num_edges]
+    # feature = torch.load(args.dataset_dir + args.dataset + '/x.pt') # [N, x_dim]
+    # y = torch.load(args.dataset_dir + args.dataset + '/y.pt') # [N]
+    # edge_index = torch.load(args.dataset_dir + args.dataset + '/edge_index.pt') # [2, num_edges]
+    
+    if args.dataset == 'cora':
+        # 针对 Cora 
+        feature, y, edge_index = load_raw_data_memory(args.dataset_dir, args.dataset)
+    else:
+        # 其他数据集保持原有逻辑
+        feature = torch.load(os.path.join(args.dataset_dir, args.dataset, 'x.pt'))
+        y = torch.load(os.path.join(args.dataset_dir, args.dataset, 'y.pt'))
+        edge_index = torch.load(os.path.join(args.dataset_dir, args.dataset, 'edge_index.pt'))
     N = feature.shape[0]
+    
+    
 
     if args.dataset == 'pokec':
         y = torch.clamp(y, min=0) 
@@ -157,6 +226,12 @@ def main():
     beta_coeffi_list = [0, 1, 1.5, 5, 7, 10, '1']
     beta_max, beta_idx  = 1, 1
 
+    
+    # =====保存历史分数，用于实验3的剪枝=====
+    last_epoch_score = None
+    dynamic_mask = None
+    # ====================================
+    
     for epoch in range(1, args.epochs + 1):
         model.to(device)
         model.train()
@@ -168,11 +243,43 @@ def main():
             switch_points = [int(num_batch * percentage) for percentage in percent_list]
         iter = 1
         
+        
         for i in range(num_batch):
             idx_i = flatten_train_idx[i*args.seq_len: (i+1)*args.seq_len]
             packed_data = get_batch_reorder_blockize(args, feature, y, idx_i.to("cpu"), sub_split_seq_lens, device, edge_index, N, k=8, block_size=16, beta_coeffi=beta_coeffi_list[beta_idx])
 
             x_i, y_i, edge_index_i, attn_bias = packed_data
+            
+            
+            # =================实验3的剪枝=================
+            if epoch % 50 ==0 and i==0 and args.enable_attention_pruning and last_epoch_score is not None:
+                # 生成掩码 (基于上一轮分数)
+                dynamic_mask_cpu = generate_mask_by_score(
+                    last_epoch_score.detach().cpu(), 
+                    ratio=args.attention_pruning_ratio
+                )
+                
+                dynamic_mask = dynamic_mask_cpu.to(device)
+                print(f"每个点高分注意力保留比例{args.attention_pruning_ratio}")    
+            # ==============================================
+            
+            
+            # =================实验4的剪枝=================
+            if epoch % 50 ==0 and i==0 and args.enable_neighbor_pruning and last_epoch_score is not None:
+                dynamic_mask_cpu = generate_mask_by_neighbor(
+                    last_epoch_score.detach().cpu(), 
+                    edge_index_i.detach().cpu(),
+                    ratio=args.neighbor_pruning_ratio
+                )
+                
+                dynamic_mask = dynamic_mask_cpu.to(device)
+                print(f"每个点高分邻居保留比例{args.neighbor_pruning_ratio}")    
+            # ==============================================
+            
+            
+            # print(f"----------------attn_bias is:{attn_bias}")
+            # print(f"----------------{i}th batch in num_batch:{num_batch} ")
+
             if attn_bias is not None:
                 x_i, y_i, edge_index_i, attn_bias = x_i.to(device), y_i.to(device), edge_index_i.to(device), attn_bias.to(device)
             else:
@@ -195,7 +302,11 @@ def main():
                 #     attn_type = "full"       
             t1 = time.time()
                 
-            out_i,score = model(x_i, attn_bias, edge_index_i, attn_type=attn_type)    
+            # out_i,score = model(x_i, attn_bias, edge_index_i, attn_type=attn_type)    
+            out_i,score = model(x_i, attn_bias, edge_index_i, attn_type=attn_type, pruning_mask=dynamic_mask)
+            
+            
+            
             loss = F.nll_loss(out_i, y_i.long())
             optimizer.zero_grad(set_to_none=True) 
             loss.backward()
@@ -212,12 +323,24 @@ def main():
             t2 = time.time() 
              
             iter_t_list.append(t2 - t1)
-            if epoch % 200 ==0 and i==0:
+            
+            last_epoch_score = score
+            if epoch % 200 ==0 and i==0 and not args.enable_attention_pruning and not args.enable_neighbor_pruning:
+                # 分析高分注意力节点对之间的距离分布，计算高分注意力节点对邻居的占比
                 analyze_attention_distance(score.detach().cpu().numpy(),idx_i.cpu().numpy(),edge_index.cpu().numpy())
+                #每个顶点高注意多少其他顶点
+                analyze_node_coverage(score.detach().cpu().numpy(),95) 
+                # 统计是否存在某些顶点总是被其他顶点高分注意(核心节点)
+                analyze_incoming_attention(score.detach().cpu().numpy(),95) 
+                # 分析高分注意力的相互性，检查是否存在相互高分注意力
+                analyze_mutual_high_attention(score.detach().cpu().numpy(),idx_i.cpu().numpy(),edge_index.cpu().numpy())
+
                 # calc_statistic(score.detach().cpu().numpy(),"./statistic.csv")
                 # edge_attn(score.detach().cpu().numpy(),idx_i.cpu().numpy(),edge_index.cpu().numpy(),"./edge_statistic.csv")
-                # analyze_mutual_high_attention(score.detach().cpu().numpy(),idx_i.cpu().numpy(),edge_index.cpu().numpy())
-     
+
+           
+            
+            
         loss_list.append(loss.item()) 
         lr_scheduler.step()
         
