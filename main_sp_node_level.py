@@ -48,10 +48,21 @@ def main():
         os.makedirs(args.model_dir, exist_ok=True)
     
     # Dataset 
-    feature = torch.load(args.dataset_dir + args.dataset + '/x.pt') # [N, x_dim]
-    y = torch.load(args.dataset_dir + args.dataset + '/y.pt') # [N]
-    edge_index = torch.load(args.dataset_dir + args.dataset + '/edge_index.pt') # [2, num_edges]
+    # feature = torch.load(args.dataset_dir + args.dataset + '/x.pt') # [N, x_dim]
+    # y = torch.load(args.dataset_dir + args.dataset + '/y.pt') # [N]
+    # edge_index = torch.load(args.dataset_dir + args.dataset + '/edge_index.pt') # [2, num_edges]
+    
+    if args.dataset == 'cora':
+        # 针对 Cora 
+        feature, y, edge_index = load_raw_data_memory(args.dataset_dir, args.dataset)
+    else:
+        # 其他数据集保持原有逻辑
+        feature = torch.load(os.path.join(args.dataset_dir, args.dataset, 'x.pt'))
+        y = torch.load(os.path.join(args.dataset_dir, args.dataset, 'y.pt'))
+        edge_index = torch.load(os.path.join(args.dataset_dir, args.dataset, 'edge_index.pt'))
     N = feature.shape[0]
+    
+    
 
     if args.dataset == 'pokec':
         y = torch.clamp(y, min=0) 
@@ -158,6 +169,12 @@ def main():
     beta_coeffi_list = [0, 1, 1.5, 5, 7, 10, '1']
     beta_max, beta_idx  = 1, 1
 
+    
+    # =====保存历史分数，用于实验3的剪枝=====
+    last_epoch_score = None
+    dynamic_mask = None
+    # ====================================
+    
     for epoch in range(1, args.epochs + 1):
         model.to(device)
         model.train()
@@ -169,11 +186,13 @@ def main():
             switch_points = [int(num_batch * percentage) for percentage in percent_list]
         iter = 1
         
+        
         for i in range(num_batch):
             idx_i = flatten_train_idx[i*args.seq_len: (i+1)*args.seq_len]
             packed_data = get_batch_reorder_blockize(args, feature, y, idx_i.to("cpu"), sub_split_seq_lens, device, edge_index, N, k=8, block_size=16, beta_coeffi=beta_coeffi_list[beta_idx])
 
             x_i, y_i, edge_index_i, attn_bias = packed_data
+            
             if attn_bias is not None:
                 x_i, y_i, edge_index_i, attn_bias = x_i.to(device), y_i.to(device), edge_index_i.to(device), attn_bias.to(device)
             else:
@@ -198,7 +217,7 @@ def main():
             
             # 训练稳定后进行节点剔除
             if epoch>500:
-                
+                pass
             out_i,score_agg,score_spe = model(x_i, attn_bias, edge_index_i, attn_type=attn_type)
             
             loss = F.nll_loss(out_i, y_i.long())

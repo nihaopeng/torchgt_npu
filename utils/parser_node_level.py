@@ -3,6 +3,18 @@ import argparse
 
 def parser_add_main_args(parser):
    
+   
+    parser.add_argument('--enable_attention_pruning', action='store_true', 
+                    help='是否开启注意力剪枝实验 (Attention Pruning)')
+    parser.add_argument('--attention_pruning_ratio', type=float, default=0.1, 
+                        help='剪枝保留比例 (例如 0.1 代表只保留 Top 10% 的高分连接)')
+    
+    parser.add_argument('--enable_neighbor_pruning', action='store_true', 
+                    help='是否开启邻居剪枝实验 (Attention Pruning)')
+    parser.add_argument('--neighbor_pruning_ratio', type=float, default=0.1, 
+                        help='高分邻居保留比例 (例如 0.1 代表只保留 Top 10% 的高分邻居)')
+
+    
     # main args
     parser.add_argument('--device', type=int, default=0, help='device id')
     parser.add_argument('--dataset_dir', type=str, default='./dataset/')

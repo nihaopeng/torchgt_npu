@@ -13,6 +13,8 @@ from gt_sp.initialize import (
     get_global_token_indices,
 )
 from torch_scatter import scatter
+
+from utils.vis import generate_mask_by_score
 # from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
 
 
@@ -51,7 +53,7 @@ class CoreAttention(nn.Module):
     #     return flash_attn_func(q, k, v, self.attention_dropout_rate)
     
 
-    def full_attention(self, k, q, v, attn_bias, mask=None):
+    def full_attention(self, k, q, v, attn_bias, mask=None,pruning_mask=None):
         # ===================================
         # Raw attention scores. [b, np, s+1, s+1]
         # ===================================
@@ -67,6 +69,13 @@ class CoreAttention(nn.Module):
         if attn_bias is not None:
             # attn_bias = attn_bias.repeat(1, self.num_heads, 1, 1)
             x = x + attn_bias
+            
+            
+        # =============采样掩码===========    
+        if pruning_mask is not None:
+            x = x + pruning_mask
+        # ===============================    
+            
         if mask is not None:
             mask = mask.unsqueeze(1)
             x = x.masked_fill(mask, 0)
@@ -158,7 +167,7 @@ class CoreAttention(nn.Module):
         output = torch.matmul(attn_probs, v)
         return output,None
 
-    def forward(self, q, k, v, attn_bias=None, edge_index=None, attn_type=None):
+    def forward(self, q, k, v, attn_bias=None, edge_index=None, attn_type=None, pruning_mask=None):
         # ===================================
         # Raw attention scores. [b, np, s+1, s+1]
         # ===================================
@@ -166,8 +175,10 @@ class CoreAttention(nn.Module):
         batch_size, s_len = q.size(0), q.size(1)
         score = None
         if attn_type == "full":
-            x,score = self.full_attention(k, q, v, attn_bias)
+            x,score = self.full_attention(k, q, v, attn_bias,pruning_mask=pruning_mask)
         elif attn_type == "sparse":
+            # 这个sparse的score还不清楚是否可以
+            # x,score = self.sparse_attention_bias(q, k, v, edge_index, attn_bias)
             x = self.sparse_attention_bias(q, k, v, edge_index, attn_bias)
         elif attn_type == "flash":
             q = q.half()
@@ -201,7 +212,7 @@ class MultiHeadAttention(nn.Module):
         self.dist_attn = DistributedAttentionNodeLevel(local_attn, get_sequence_parallel_group())
 
 
-    def forward(self, x, attn_bias=None, edge_index=None, attn_type=None):
+    def forward(self, x, attn_bias=None, edge_index=None, attn_type=None,pruning_mask=None):
         # x: [b, s/p+1, h], attn_bias: [b, n_head, s+1, s+1]
         orig_q_size = x.size()
         # =====================
@@ -220,7 +231,7 @@ class MultiHeadAttention(nn.Module):
         # ==================================
         # core attention computation
         # ==================================
-        x,score = self.dist_attn(q, k, v, attn_bias, edge_index, attn_type)
+        x,score = self.dist_attn(q, k, v, attn_bias, edge_index, attn_type,pruning_mask=pruning_mask)
 
         # =================
         # linear
@@ -254,12 +265,12 @@ class EncoderLayer(nn.Module):
         self.layer_norm2 = nn.LayerNorm(hidden_size)
             
             
-    def forward(self, x, attn_bias=None, edge_index=None, attn_type=None):
+    def forward(self, x, attn_bias=None, edge_index=None, attn_type=None,pruning_mask=None):
         # ==================================
         # MHA
         # ==================================     
         # x: [b, s/p+1, h]
-        y,score = self.self_attention(x, attn_bias, edge_index=edge_index, attn_type=attn_type)
+        y,score = self.self_attention(x, attn_bias, edge_index=edge_index, attn_type=attn_type,pruning_mask=pruning_mask)
         y = self.self_attention_dropout(y)
         y = self.O(y)
         x = x + y
@@ -334,7 +345,7 @@ class GT(nn.Module):
         self.apply(lambda module: init_params(module, n_layers=n_layers))
         
         
-    def forward(self, x, attn_bias, edge_index, perturb=None, attn_type=None):
+    def forward(self, x, attn_bias, edge_index, perturb=None, attn_type=None, pruning_mask=None):
         # x -> [bs=1, s/p, x_d]
         x = x.unsqueeze(0) 
         n_graph = x.shape[0] 
