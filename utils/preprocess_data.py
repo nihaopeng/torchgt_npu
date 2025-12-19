@@ -238,6 +238,7 @@ def get_dataset(dataset_name):
         torch.save(data_x, dataset_dir + dataset_name + '/x.pt')
         torch.save(data_y, dataset_dir + dataset_name + '/y.pt')
         torch.save(edge_index, dataset_dir + dataset_name + '/edge_index.pt')
+        print(f"save to {dataset_dir + dataset_name}")
         # sp.save_npz(dataset_dir + dataset_name + '/column_normalized_adj.npz', column_normalized_adj)
 
 
@@ -369,4 +370,7 @@ def rand_nodes_seq(dataset_name, k1, p=None):
 
 
 if __name__ == '__main__':
-    get_dataset('ogbn-arxiv')
+    import sys
+    print(sys.argv[1])
+    dataset_name = sys.argv[1]
+    get_dataset(dataset_name)

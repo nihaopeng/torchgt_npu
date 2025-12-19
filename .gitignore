@@ -8,3 +8,5 @@ cache/
 *.log
 *.csv
 fusion_result.json
+vis/
+exps/

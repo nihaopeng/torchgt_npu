@@ -26,7 +26,7 @@ from gt_sp.utils import random_split_idx, get_batch_reorder_blockize, check_cond
 from utils.parser_node_level import parser_add_main_args
 from collections import deque
 from core.metisPartition import PartitionTree
-from utils.vis import draw_attn
+from utils.vis import vis_interface
 
 def main():
     parser = argparse.ArgumentParser(description='TorchGT node-level training arguments.')
@@ -180,7 +180,7 @@ def main():
             
             t1 = time.time()
             # out_i,score = model(x_i, attn_bias, edge_index_i, attn_type=attn_type)
-            out_i,score = model(metis_partition_feature[i].to(device), None, None, attn_type=attn_type)
+            out_i,score_agg,score_spe = model(metis_partition_feature[i].to(device), None, None, attn_type=attn_type)
             # print(f"out_i:{out_i.shape},y[metis_partition_parts[i]]:{y[metis_partition_parts[i]].shape}")
             # print(f"edge_index shape:{edge_index.cpu().numpy().shape}")
             loss = F.nll_loss(out_i, y[metis_partition_parts[i]].to(device).long())
@@ -199,11 +199,8 @@ def main():
             t2 = time.time() 
              
             iter_t_list.append(t2 - t1)
-            if (epoch+1) % 20 == 0:
-                if i == 0 and (epoch+1) % 100 == 0:
-                # if True:
-                    draw_attn(score.cpu().detach().numpy(),edge_index.cpu().numpy(),metis_partition_nodes[i],f"fig_epoch_{epoch}.png")
-                scores.append(score)
+            if epoch % 20 ==0 and i==0:
+                vis_interface(score_agg,score_spe,edge_index)
      
         loss_list.append(loss.item()) 
         lr_scheduler.step()

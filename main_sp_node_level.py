@@ -26,7 +26,8 @@ from gt_sp.utils import random_split_idx, get_batch_reorder_blockize, check_cond
 from utils.parser_node_level import parser_add_main_args
 from collections import deque
 
-from utils.vis import analyze_attention_distance, calc_statistic,edge_attn,analyze_mutual_high_attention
+from utils.vis import high_attn_node_plot, vis_interface,pics_to_gif
+import utils.vis as vis
 
 def main():
     parser = argparse.ArgumentParser(description='TorchGT node-level training arguments.')
@@ -194,8 +195,12 @@ def main():
                 # else:
                 #     attn_type = "full"       
             t1 = time.time()
+            
+            # 训练稳定后进行节点剔除
+            if epoch>500:
                 
-            out_i,score = model(x_i, attn_bias, edge_index_i, attn_type=attn_type)    
+            out_i,score_agg,score_spe = model(x_i, attn_bias, edge_index_i, attn_type=attn_type)
+            
             loss = F.nll_loss(out_i, y_i.long())
             optimizer.zero_grad(set_to_none=True) 
             loss.backward()
@@ -212,11 +217,16 @@ def main():
             t2 = time.time() 
              
             iter_t_list.append(t2 - t1)
-            if epoch % 200 ==0 and i==0:
-                analyze_attention_distance(score.detach().cpu().numpy(),idx_i.cpu().numpy(),edge_index.cpu().numpy())
-                # calc_statistic(score.detach().cpu().numpy(),"./statistic.csv")
-                # edge_attn(score.detach().cpu().numpy(),idx_i.cpu().numpy(),edge_index.cpu().numpy(),"./edge_statistic.csv")
-                # analyze_mutual_high_attention(score.detach().cpu().numpy(),idx_i.cpu().numpy(),edge_index.cpu().numpy())
+            if epoch % 20 ==0 and i==0:
+                vis_interface(score_agg,score_spe,idx_i,edge_index,epoch)
+            if epoch == args.epochs-1:
+            # if epoch == 60:
+                pics_to_gif(vis.score_hist_flist,"./vis/score_var.gif")
+                # print(np.array(vis.score_neighbor_ratio_list).T.shape)
+                # print(np.array(vis.score_relativity_ratio_list).T.shape)
+                vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,"./vis/高注意力邻居占比")
+                vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,"./vis/高注意力相对应比例")
+                high_attn_node_plot()
      
         loss_list.append(loss.item()) 
         lr_scheduler.step()

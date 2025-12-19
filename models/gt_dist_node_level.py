@@ -77,7 +77,7 @@ class CoreAttention(nn.Module):
         x = x.matmul(v)  # [b, h, q_len, attn]
 
         x = x.transpose(1, 2).contiguous()  # [b, q_len, h, attn]
-        return x,score
+        return x,torch.abs(score)# return absoluted value # 对分数的绝对值求和，考虑正负数都起作用
     
 
     def sparse_attention_bias(self, q, k, v, edge_index, attn_bias):
@@ -139,7 +139,7 @@ class CoreAttention(nn.Module):
 
         x = wV / (Z + 1e-6)
         
-        return x
+        return x,None
 
     def naive_attention(self, q, k, v, dropout_p=0.0):
         # q, k, v: [batch, n_heads, seq_len, head_dim]
@@ -156,7 +156,7 @@ class CoreAttention(nn.Module):
 
         # 4. 加权求和
         output = torch.matmul(attn_probs, v)
-        return output
+        return output,None
 
     def forward(self, q, k, v, attn_bias=None, edge_index=None, attn_type=None):
         # ===================================
@@ -164,7 +164,7 @@ class CoreAttention(nn.Module):
         # ===================================
         # q, k, v: [b, s+p, np, hn], edge_index: [2, total_edges], attn_bias: [b, n, s+p, s+p]
         batch_size, s_len = q.size(0), q.size(1)
-         
+        score = None
         if attn_type == "full":
             x,score = self.full_attention(k, q, v, attn_bias)
         elif attn_type == "sparse":
@@ -229,7 +229,7 @@ class MultiHeadAttention(nn.Module):
         # [b, s/p+1, h]
 
         assert x.size() == orig_q_size
-        return x,torch.sum(torch.abs(score), dim=1).squeeze(0)# 对分数的绝对值求和，考虑正负数都起作用
+        return x,torch.sum(score, dim=1).squeeze(0)# 对分数的绝对值求和，考虑正负数都起作用
 
 
 class EncoderLayer(nn.Module):
@@ -347,15 +347,16 @@ class GT(nn.Module):
         # Graphormer encoder
         # [b, s/p+1, h]
         score_agg = None
+        score_spe = []
         for enc_layer in self.layers:
             output,score = enc_layer(
                 output, 
                 edge_index=edge_index,
                 attn_type=attn_type,
-            ) 
+            )
             score_agg = score if score_agg==None else score_agg+score # 返回的score已经是绝对值了
-        
+            score_spe.append(score)
         # Output part
         output = self.MLP_layer(output[0, :, :]) 
         
-        return F.log_softmax(output, dim=1),score
+        return F.log_softmax(output, dim=1),score_agg,score_spe
