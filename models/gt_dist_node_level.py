@@ -14,7 +14,6 @@ from gt_sp.initialize import (
 )
 from torch_scatter import scatter
 
-from utils.vis import generate_mask_by_score
 # from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
 
 
@@ -77,8 +76,16 @@ class CoreAttention(nn.Module):
         # ===============================    
             
         if mask is not None:
-            mask = mask.unsqueeze(1)
-            x = x.masked_fill(mask, 0)
+            # print(f"mask shape:{mask.shape}")
+            mask = mask.to(x.device)
+            mask = mask.unsqueeze(0)
+            mask = mask.unsqueeze(0)
+            mask = mask.repeat(1, x.shape[1], 1, 1)
+            # print(f"mask shape:{mask.shape}")
+            # print(f"mask sum:{torch.sum(mask)}")
+            # print(f"x shape:{x.shape}")
+            # input()
+            x = x.masked_fill(mask, -1e9) # 核心修改：0 → -1e9,softmax后才会真正变为零
         # score = x
 
         x = torch.softmax(x, dim=3)
@@ -167,7 +174,7 @@ class CoreAttention(nn.Module):
         output = torch.matmul(attn_probs, v)
         return output,None
 
-    def forward(self, q, k, v, attn_bias=None, edge_index=None, attn_type=None, pruning_mask=None):
+    def forward(self, q, k, v, attn_bias=None, edge_index=None, attn_type=None,mask= None,pruning_mask=None):
         # ===================================
         # Raw attention scores. [b, np, s+1, s+1]
         # ===================================
@@ -175,7 +182,7 @@ class CoreAttention(nn.Module):
         batch_size, s_len = q.size(0), q.size(1)
         score = None
         if attn_type == "full":
-            x,score = self.full_attention(k, q, v, attn_bias,pruning_mask=pruning_mask)
+            x,score = self.full_attention(k, q, v, attn_bias,pruning_mask=pruning_mask,mask=mask)
         elif attn_type == "sparse":
             # 这个sparse的score还不清楚是否可以
             # x,score = self.sparse_attention_bias(q, k, v, edge_index, attn_bias)
@@ -212,7 +219,7 @@ class MultiHeadAttention(nn.Module):
         self.dist_attn = DistributedAttentionNodeLevel(local_attn, get_sequence_parallel_group())
 
 
-    def forward(self, x, attn_bias=None, edge_index=None, attn_type=None,pruning_mask=None):
+    def forward(self, x, attn_bias=None, edge_index=None, attn_type=None,mask = None,pruning_mask=None):
         # x: [b, s/p+1, h], attn_bias: [b, n_head, s+1, s+1]
         orig_q_size = x.size()
         # =====================
@@ -231,7 +238,7 @@ class MultiHeadAttention(nn.Module):
         # ==================================
         # core attention computation
         # ==================================
-        x,score = self.dist_attn(q, k, v, attn_bias, edge_index, attn_type,pruning_mask=pruning_mask)
+        x,score = self.dist_attn(q, k, v, attn_bias, edge_index, attn_type,pruning_mask=pruning_mask,mask=mask)
 
         # =================
         # linear
@@ -265,12 +272,12 @@ class EncoderLayer(nn.Module):
         self.layer_norm2 = nn.LayerNorm(hidden_size)
             
             
-    def forward(self, x, attn_bias=None, edge_index=None, attn_type=None,pruning_mask=None):
+    def forward(self, x, attn_bias=None, edge_index=None, attn_type=None,mask= None,pruning_mask=None):
         # ==================================
         # MHA
         # ==================================     
         # x: [b, s/p+1, h]
-        y,score = self.self_attention(x, attn_bias, edge_index=edge_index, attn_type=attn_type,pruning_mask=pruning_mask)
+        y,score = self.self_attention(x, attn_bias, edge_index=edge_index, attn_type=attn_type,pruning_mask=pruning_mask,mask=mask)
         y = self.self_attention_dropout(y)
         y = self.O(y)
         x = x + y
@@ -345,7 +352,7 @@ class GT(nn.Module):
         self.apply(lambda module: init_params(module, n_layers=n_layers))
         
         
-    def forward(self, x, attn_bias, edge_index, perturb=None, attn_type=None, pruning_mask=None):
+    def forward(self, x, attn_bias, edge_index, perturb=None, attn_type=None, mask= None, pruning_mask=None):
         # x -> [bs=1, s/p, x_d]
         x = x.unsqueeze(0) 
         n_graph = x.shape[0] 
@@ -364,6 +371,7 @@ class GT(nn.Module):
                 output, 
                 edge_index=edge_index,
                 attn_type=attn_type,
+                mask=mask
             )
             score_agg = score if score_agg==None else score_agg+score # 返回的score已经是绝对值了
             score_spe.append(score)

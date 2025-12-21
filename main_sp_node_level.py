@@ -52,17 +52,10 @@ def main():
     # y = torch.load(args.dataset_dir + args.dataset + '/y.pt') # [N]
     # edge_index = torch.load(args.dataset_dir + args.dataset + '/edge_index.pt') # [2, num_edges]
     
-    if args.dataset == 'cora':
-        # 针对 Cora 
-        feature, y, edge_index = load_raw_data_memory(args.dataset_dir, args.dataset)
-    else:
-        # 其他数据集保持原有逻辑
-        feature = torch.load(os.path.join(args.dataset_dir, args.dataset, 'x.pt'))
-        y = torch.load(os.path.join(args.dataset_dir, args.dataset, 'y.pt'))
-        edge_index = torch.load(os.path.join(args.dataset_dir, args.dataset, 'edge_index.pt'))
+    feature = torch.load(os.path.join(args.dataset_dir, args.dataset, 'x.pt'))
+    y = torch.load(os.path.join(args.dataset_dir, args.dataset, 'y.pt'))
+    edge_index = torch.load(os.path.join(args.dataset_dir, args.dataset, 'edge_index.pt'))
     N = feature.shape[0]
-    
-    
 
     if args.dataset == 'pokec':
         y = torch.clamp(y, min=0) 
@@ -168,13 +161,9 @@ def main():
     compare_ldr = deque([0, 0, 0, 0, 0]) 
     beta_coeffi_list = [0, 1, 1.5, 5, 7, 10, '1']
     beta_max, beta_idx  = 1, 1
-
     
-    # =====保存历史分数，用于实验3的剪枝=====
-    last_epoch_score = None
-    dynamic_mask = None
-    # ====================================
-    
+    score_agg = None
+    mask = None
     for epoch in range(1, args.epochs + 1):
         model.to(device)
         model.train()
@@ -186,17 +175,16 @@ def main():
             switch_points = [int(num_batch * percentage) for percentage in percent_list]
         iter = 1
         
-        
         for i in range(num_batch):
             idx_i = flatten_train_idx[i*args.seq_len: (i+1)*args.seq_len]
             packed_data = get_batch_reorder_blockize(args, feature, y, idx_i.to("cpu"), sub_split_seq_lens, device, edge_index, N, k=8, block_size=16, beta_coeffi=beta_coeffi_list[beta_idx])
 
-            x_i, y_i, edge_index_i, attn_bias = packed_data
+            x_i, y_i, edge_index_i, attn_bias,idx_i = packed_data
             
             if attn_bias is not None:
-                x_i, y_i, edge_index_i, attn_bias = x_i.to(device), y_i.to(device), edge_index_i.to(device), attn_bias.to(device)
+                x_i, y_i, edge_index_i, attn_bias,idx_i = x_i.to(device), y_i.to(device), edge_index_i.to(device), attn_bias.to(device),idx_i.to(device)
             else:
-                x_i, y_i, edge_index_i = x_i.to(device), y_i.to(device), edge_index_i.to(device)
+                x_i, y_i, edge_index_i,idx_i = x_i.to(device), y_i.to(device), edge_index_i.to(device),idx_i.to(device)
         
             if args.attn_type == "sparse":
                 attn_type = "sparse"
@@ -204,24 +192,25 @@ def main():
                 attn_type = "full"
             elif args.attn_type == "flash":
                 attn_type = "flash"
-            
-            # if args.attn_type == "hybrid":
-                # if args.rank == 0: 
-                #     con_result = check_conditions(edge_index, idx_i.shape[0])
 
-                # if con_result:
-                #     attn_type = "sparse"
-                # else:
-                #     attn_type = "full"       
             t1 = time.time()
             
+            # 直接剔除一部分邻居
+            # ==================================================
+            # mask = vis.homo_node_mask(edge_index,idx_i,0.7)
+            # print(f"mask shape:{mask.shape},x shape:{x_i.shape}")
+            # ==================================================
+            
             # 训练稳定后进行节点剔除
-            if epoch>500:
-                pass
-            out_i,score_agg,score_spe = model(x_i, attn_bias, edge_index_i, attn_type=attn_type)
+            # ==================================================
+            # mask = None
+            # if epoch>100:
+            #     mask = vis.mask_high_attn(score_agg,idx_i,edge_index,epoch)
+            # ==================================================
+            out_i,score_agg,score_spe = model(x_i, attn_bias, edge_index_i, attn_type=attn_type,mask=mask)
             
             loss = F.nll_loss(out_i, y_i.long())
-            optimizer.zero_grad(set_to_none=True) 
+            optimizer.zero_grad(set_to_none=True)
             loss.backward()
             
             # Sync all-reduce gradient 
@@ -239,15 +228,14 @@ def main():
             if epoch % 20 ==0 and i==0:
                 vis_interface(score_agg,score_spe,idx_i,edge_index,epoch)
             if epoch == args.epochs-1:
-            # if epoch == 60:
+            # if epoch == 61:
                 pics_to_gif(vis.score_hist_flist,"./vis/score_var.gif")
-                # print(np.array(vis.score_neighbor_ratio_list).T.shape)
-                # print(np.array(vis.score_relativity_ratio_list).T.shape)
                 vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,"./vis/高注意力邻居占比")
                 vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,"./vis/高注意力相对应比例")
                 high_attn_node_plot()
-     
-        loss_list.append(loss.item()) 
+                # vis.acc_plot(vis.epochs,[vis.train_acc,vis.test_acc,vis.val_acc],["train_acc","test_acc","val_acc"])
+    
+        loss_list.append(loss.item())
         lr_scheduler.step()
         
         if epoch > 4 and args.rank == 0:  
@@ -261,6 +249,11 @@ def main():
             train_acc = sparse_eval_gpu(args, model, feature, y, split_idx['train'], attn_bias, edge_index, device) 
             val_acc = sparse_eval_gpu(args, model, feature, y, split_idx['valid'], attn_bias, edge_index, device)
             test_acc = sparse_eval_gpu(args, model, feature, y, split_idx['test'], attn_bias, edge_index, device)
+            if epoch % 20 ==0 and i==0:
+                vis.train_acc.append(train_acc)
+                vis.val_acc.append(val_acc)
+                vis.test_acc.append(test_acc)
+                
             t5 = time.time()
             print("------------------------------------------------------------------------------------")
             print(f'Eval time {t5-t4}s')
@@ -320,23 +313,7 @@ def main():
 
     if args.rank == 0:
         print("Best validation accuracy: {:.2%}, test accuracy: {:.2%}".format(best_val, best_test))
-
-        if not os.path.exists(f'./exps/{args.dataset}'): 
-            os.makedirs(f'./exps/{args.dataset}')
             
-        if args.attn_type != "hybrid":
-            if args.reorder:
-                np.save(f'./exps/{args.dataset}/{args.model}{args.hidden_dim}_{str(args.attn_type)}_reorder_s{args.seq_len}_e{args.epochs}_sp{args.world_size}_test-fp16', np.array(test_acc_list))
-                # np.save('./exps/' + args.dataset + '/tt-sparse_bias_val_e' + str(args.epochs), np.array(val_acc_list))
-                np.save(f'./exps/{args.dataset}/{args.model}{args.hidden_dim}_{str(args.attn_type)}_reorder_s{args.seq_len}_e{args.epochs}_sp{args.world_size}_loss-fp16', np.array(loss_list))
-            else:
-                np.save(f'./exps/{args.dataset}/{args.model}{args.hidden_dim}_{str(args.attn_type)}_s{args.seq_len}_e{args.epochs}_sp{args.world_size}_test', np.array(test_acc_list))
-                # np.save('./exps/' + args.dataset + '/tt-sparse_bias_val_e' + str(args.epochs), np.array(val_acc_list))
-                np.save(f'./exps/{args.dataset}/{args.model}{args.hidden_dim}_{str(args.attn_type)}_s{args.seq_len}_e{args.epochs}_sp{args.world_size}_loss', np.array(loss_list))
-        else:
-            np.save(f'./exps/{args.dataset}/{args.model}{args.hidden_dim}_{str(args.attn_type)}_{args.switch_freq}_s{args.seq_len}_e{args.epochs}_sp{args.world_size}_test', np.array(test_acc_list))
-            # np.save('./exps/' + args.dataset + '/tt-sparse_bias_val_e' + str(args.epochs), np.array(val_acc_list))
-            np.save(f'./exps/{args.dataset}/{args.model}{args.hidden_dim}_{str(args.attn_type)}_{args.switch_freq}_s{args.seq_len}_e{args.epochs}_sp{args.world_size}_loss', np.array(loss_list))
 
 
 if __name__ == "__main__":

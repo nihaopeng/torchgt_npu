@@ -420,6 +420,7 @@ def get_batch_reorder_blockize(args, x, y, idx_batch, rest_split_sizes, device, 
 
     x_i = x[idx_batch] # [s, x_d]
     y_i = y[idx_batch] # [s]
+    idx_i = torch.tensor(idx_batch, dtype=torch.long)  # 原始索引张量
 
     # Get sub edge_index according to current sequence nodes
     edge_index_i_raw = gen_sub_edge_index(edge_index, idx_batch, N) 
@@ -468,6 +469,7 @@ def get_batch_reorder_blockize(args, x, y, idx_batch, rest_split_sizes, device, 
             # attn_bias = torch.index_select(attn_bias, 1, sorted_indices)
         else:
             attn_bias = None
+        idx_i = torch.index_select(idx_i, 0, sorted_indices)
         x_i = torch.index_select(x_i, 0, sorted_indices)
         y_i = torch.index_select(y_i, 0, sorted_indices)
     else:
@@ -517,7 +519,7 @@ def get_batch_reorder_blockize(args, x, y, idx_batch, rest_split_sizes, device, 
             
         last_batch_flag(False)
 
-    return (x_i, y_i, edge_index_i, attn_bias)
+    return (x_i, y_i, edge_index_i, attn_bias,idx_i)
 
 
 def get_batch_papers100m(args, x, y, idx_batch, attn_bias, rest_split_sizes, device, edge_index, N):

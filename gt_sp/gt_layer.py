@@ -231,7 +231,7 @@ class DistributedAttentionNodeLevel(torch.nn.Module):
         self.scatter_idx = scatter_idx
         self.gather_idx = gather_idx
 
-    def forward(self, query: Tensor, key: Tensor, value: Tensor, attn_bias: Tensor, edge_index: Tensor, attn_type, pruning_mask=None,*args: Any) -> Tensor:
+    def forward(self, query: Tensor, key: Tensor, value: Tensor, attn_bias: Tensor, edge_index: Tensor, attn_type,mask= None, pruning_mask=None,*args: Any) -> Tensor:
         """ forward
 
         Arguments:
@@ -276,7 +276,8 @@ class DistributedAttentionNodeLevel(torch.nn.Module):
             value_layer, 
             attn_bias_layer, 
             edge_index, 
-            attn_type, 
+            attn_type,
+            mask=mask,
             pruning_mask=pruning_mask, # <--- 加上这一行
             *args
         )

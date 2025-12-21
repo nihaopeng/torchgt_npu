@@ -26,7 +26,8 @@ from gt_sp.utils import random_split_idx, get_batch_reorder_blockize, check_cond
 from utils.parser_node_level import parser_add_main_args
 from collections import deque
 from core.metisPartition import PartitionTree
-from utils.vis import vis_interface
+from utils.vis import pics_to_gif, vis_interface,high_attn_node_plot
+import utils.vis as vis
 
 def main():
     parser = argparse.ArgumentParser(description='TorchGT node-level training arguments.')
@@ -201,6 +202,12 @@ def main():
             iter_t_list.append(t2 - t1)
             if epoch % 20 ==0 and i==0:
                 vis_interface(score_agg,score_spe,edge_index)
+            if epoch == args.epochs-1:
+                pics_to_gif(vis.score_hist_flist,"./vis/score_var.gif")
+                vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,"./vis/高注意力邻居占比")
+                vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,"./vis/高注意力相对应比例")
+                high_attn_node_plot()
+                vis.acc_plot(vis.epochs,[vis.train_acc,vis.test_acc,vis.val_acc],["train_acc","test_acc","val_acc"])
      
         loss_list.append(loss.item()) 
         lr_scheduler.step()
@@ -226,6 +233,11 @@ def main():
             train_acc = sparse_eval_gpu(args, model, feature, y, split_idx['train'], None, edge_index, device)
             val_acc = sparse_eval_gpu(args, model, feature, y, split_idx['valid'], None, edge_index, device)
             test_acc = sparse_eval_gpu(args, model, feature, y, split_idx['test'], None, edge_index, device)
+            if epoch % 20 ==0 and i==0:
+                vis.train_acc.append(train_acc)
+                vis.val_acc.append(val_acc)
+                vis.test_acc.append(test_acc)
+            
             t5 = time.time()
             print("------------------------------------------------------------------------------------")
             print(f'Eval time {t5-t4}s')
