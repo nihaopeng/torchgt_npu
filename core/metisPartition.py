@@ -117,7 +117,7 @@ class PartitionTree:
         for node, scores in zip(nodes, scores_partitions):
             part_nodes = torch.tensor(node.node_ids)
             part_nodes = part_nodes[torch.isin(part_nodes, self.train_idx)]
-            # print(scores)
+            print(f"score shape:{scores.shape}")
             row_sums = scores.abs().sum(dim=1)
             k = int(remove_ratio * len(row_sums))
             _, indices = torch.topk(row_sums, k, largest=False)

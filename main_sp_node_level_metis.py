@@ -182,6 +182,7 @@ def main():
             t1 = time.time()
             # out_i,score = model(x_i, attn_bias, edge_index_i, attn_type=attn_type)
             out_i,score_agg,score_spe = model(metis_partition_feature[i].to(device), None, None, attn_type=attn_type)
+            scores.append(score_agg)
             # print(f"out_i:{out_i.shape},y[metis_partition_parts[i]]:{y[metis_partition_parts[i]].shape}")
             # print(f"edge_index shape:{edge_index.cpu().numpy().shape}")
             loss = F.nll_loss(out_i, y[metis_partition_parts[i]].to(device).long())
@@ -200,21 +201,24 @@ def main():
             t2 = time.time() 
              
             iter_t_list.append(t2 - t1)
-            if epoch % 20 ==0 and i==0:
-                vis_interface(score_agg,score_spe,edge_index)
-            if epoch == args.epochs-1:
-                pics_to_gif(vis.score_hist_flist,"./vis/score_var.gif")
-                vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,"./vis/高注意力邻居占比")
-                vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,"./vis/高注意力相对应比例")
-                high_attn_node_plot()
-                vis.acc_plot(vis.epochs,[vis.train_acc,vis.test_acc,vis.val_acc],["train_acc","test_acc","val_acc"])
+        if epoch % 20 ==0 and i==0:
+            vis_interface(score_agg,score_spe,metis_partition_nodes[i].node_ids,edge_index,epoch)
+        if epoch == args.epochs-1:
+            # pics_to_gif(vis.score_hist_flist,"./vis/score_var.gif")
+            # vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,"./vis/高注意力邻居占比")
+            # vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,"./vis/高注意力相对应比例")
+            # high_attn_node_plot()
+            vis.acc_plot(vis.epochs,[vis.train_acc,vis.test_acc,vis.val_acc],["train_acc","test_acc","val_acc"])
      
         loss_list.append(loss.item()) 
         lr_scheduler.step()
         
-        if (epoch+1) % 20 == 0:
-            print(f"score:{scores[0]}")
-            partitionTree.dynamic_window_build(scores,metis_partition_nodes)
+        # 窗口调整
+        # =================================================================
+        # if (epoch+1) % 20 == 0:
+        #     # print(f"score:{scores[0]}")
+        #     partitionTree.dynamic_window_build(scores,metis_partition_nodes)
+        # =================================================================
         
         csv_content = []
         
@@ -266,23 +270,6 @@ def main():
     
     if args.rank == 0:
         print("Best validation accuracy: {:.2%}, test accuracy: {:.2%}".format(best_val, best_test))
-
-        if not os.path.exists(f'./exps/{args.dataset}'): 
-            os.makedirs(f'./exps/{args.dataset}')
-        
-        if args.attn_type != "hybrid":
-            if args.reorder:
-                np.save(f'./exps/{args.dataset}/{args.model}{args.hidden_dim}_{str(args.attn_type)}_reorder_s{args.seq_len}_e{args.epochs}_sp{args.world_size}_test-fp16', np.array(test_acc_list))
-                # np.save('./exps/' + args.dataset + '/tt-sparse_bias_val_e' + str(args.epochs), np.array(val_acc_list))
-                np.save(f'./exps/{args.dataset}/{args.model}{args.hidden_dim}_{str(args.attn_type)}_reorder_s{args.seq_len}_e{args.epochs}_sp{args.world_size}_loss-fp16', np.array(loss_list))
-            else:
-                np.save(f'./exps/{args.dataset}/{args.model}{args.hidden_dim}_{str(args.attn_type)}_s{args.seq_len}_e{args.epochs}_sp{args.world_size}_test', np.array(test_acc_list))
-                # np.save('./exps/' + args.dataset + '/tt-sparse_bias_val_e' + str(args.epochs), np.array(val_acc_list))
-                np.save(f'./exps/{args.dataset}/{args.model}{args.hidden_dim}_{str(args.attn_type)}_s{args.seq_len}_e{args.epochs}_sp{args.world_size}_loss', np.array(loss_list))
-        else:
-            np.save(f'./exps/{args.dataset}/{args.model}{args.hidden_dim}_{str(args.attn_type)}_{args.switch_freq}_s{args.seq_len}_e{args.epochs}_sp{args.world_size}_test', np.array(test_acc_list))
-            # np.save('./exps/' + args.dataset + '/tt-sparse_bias_val_e' + str(args.epochs), np.array(val_acc_list))
-            np.save(f'./exps/{args.dataset}/{args.model}{args.hidden_dim}_{str(args.attn_type)}_{args.switch_freq}_s{args.seq_len}_e{args.epochs}_sp{args.world_size}_loss', np.array(loss_list))
 
 
 if __name__ == "__main__":

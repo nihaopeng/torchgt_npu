@@ -113,6 +113,7 @@ def neighbor(score_agg:np.ndarray,idx:np.ndarray,edge_index:np.ndarray,epoch:int
                     v = idx[j]
                     # 检查是否在边集合中（O(1)查询）
                     edge_tuple = (min(u, v), max(u, v))
+                    # print(f"edge_tuple:{edge_tuple}")
                     if edge_tuple in edge_set:
                         score_neighbor_cnt += 1
         score_neighbor_ratio_epoch.append(score_neighbor_cnt/score_cnt)
@@ -265,7 +266,7 @@ def homo_node_mask(edge_index, idx_i, mask_ratio=0.5):
     for local_i,node in enumerate(idx_i.cpu().numpy()):
         # 找同质点邻居
         neighbors = [n for n in G.neighbors(node) if n in node_to_local_idx]
-        if len(neighbors) <= 1: continue
+        # if len(neighbors) <= 1: continue
 
         np.random.shuffle(neighbors)
         mask_num = int(len(neighbors) * mask_ratio)
@@ -286,8 +287,8 @@ def vis_interface(score_agg,score_spe,idx,edge_index,epoch):
     epochs.append(epoch)
     if not os.path.exists("vis"):
         os.mkdir("vis")
-    high_attn(score_agg,score_spe,epoch)
-    neighbor(score_agg,idx,edge_index,epoch)
-    relativity(score_agg,idx,edge_index,epoch)
-    high_attn_node(score_agg,idx,edge_index,epoch)
+    # high_attn(score_agg,score_spe,epoch)
+    # neighbor(score_agg,idx,edge_index,epoch)
+    # relativity(score_agg,idx,edge_index,epoch)
+    # high_attn_node(score_agg,idx,edge_index,epoch)
     # distance(score_agg,idx,edge_index,epoch)

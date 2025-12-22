@@ -197,7 +197,7 @@ def main():
             
             # 直接剔除一部分邻居
             # ==================================================
-            # mask = vis.homo_node_mask(edge_index,idx_i,0.7)
+            # mask = vis.homo_node_mask(edge_index,idx_i,0.1)
             # print(f"mask shape:{mask.shape},x shape:{x_i.shape}")
             # ==================================================
             
@@ -229,11 +229,11 @@ def main():
                 vis_interface(score_agg,score_spe,idx_i,edge_index,epoch)
             if epoch == args.epochs-1:
             # if epoch == 61:
-                pics_to_gif(vis.score_hist_flist,"./vis/score_var.gif")
-                vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,"./vis/高注意力邻居占比")
-                vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,"./vis/高注意力相对应比例")
-                high_attn_node_plot()
-                # vis.acc_plot(vis.epochs,[vis.train_acc,vis.test_acc,vis.val_acc],["train_acc","test_acc","val_acc"])
+                # pics_to_gif(vis.score_hist_flist,"./vis/score_var.gif")
+                # vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,"./vis/高注意力邻居占比")
+                # vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,"./vis/高注意力相对应比例")
+                # high_attn_node_plot()
+                vis.acc_plot(vis.epochs,[vis.train_acc,vis.test_acc,vis.val_acc],["train_acc","test_acc","val_acc"])
     
         loss_list.append(loss.item())
         lr_scheduler.step()
