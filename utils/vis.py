@@ -11,6 +11,8 @@ from PIL import Image
 import os
 import networkx as nx
 
+from utils.logger import log
+
 plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei']
 
 score_hist_flist = []
@@ -45,7 +47,7 @@ def pics_to_gif(flist,output_gif, frame_duration=100, loop=0):
         duration=frame_duration,
         loop=loop
     )
-    print(f"GIF已保存至：{output_gif}")
+    log(f"GIF已保存至：{output_gif}")
 
 def high_attn(score_agg:np.ndarray,score_spe:np.ndarray,epoch:int):
     plt.figure(figsize=(10, 6))
@@ -118,6 +120,13 @@ def neighbor(score_agg:np.ndarray,idx:np.ndarray,edge_index:np.ndarray,epoch:int
                         score_neighbor_cnt += 1
         score_neighbor_ratio_epoch.append(score_neighbor_cnt/score_cnt)
     score_neighbor_ratio_list.append(score_neighbor_ratio_epoch)
+    
+def high_score_neighbor(score_agg:np.ndarray,idx:np.ndarray,edge_index:np.ndarray,epoch:int):
+    # 1. 转NetworkX图（无向）
+    G = nx.Graph()
+    G.add_edges_from(edge_index.T.cpu().numpy().tolist())
+    node_to_local_idx = {node: idx for idx, node in enumerate(idx.cpu().numpy())}
+    
 
 def relativity(score_agg:np.ndarray,idx:np.ndarray,edge_index:np.ndarray,epoch:int):
     score_flat=score_agg.flatten()
@@ -197,7 +206,7 @@ def distance(score_agg:np.ndarray,idx:np.ndarray,edge_index:np.ndarray,epoch:int
             except nx.NetworkXNoPath:
                 distances.append(0)
             except Exception as e:
-                print(f"计算节点对 ({u}, {v}) 距离时出错: {e}")
+                log(f"计算节点对 ({u}, {v}) 距离时出错: {e}")
                 continue
         distance_counts = Counter(distances)
         sorted_distances = sorted(distance_counts.keys())

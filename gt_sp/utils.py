@@ -507,7 +507,7 @@ def get_batch_reorder_blockize(args, x, y, idx_batch, rest_split_sizes, device, 
         sub_seq_start = seq_parallel_world_rank * sub_seq_length
         sub_seq_end = (seq_parallel_world_rank + 1) * sub_seq_length
         
-        x_i = x_i[sub_seq_start:sub_seq_end, :]
+        x_i = x_i[sub_seq_start:sub_seq_end, :] # 差异处
         y_i = y_i[sub_seq_start:sub_seq_end]
         
         if attn_bias is not None:

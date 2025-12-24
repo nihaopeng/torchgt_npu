@@ -222,7 +222,7 @@ def main():
         
         csv_content = []
         
-        if epoch > 4 and args.rank == 0:  
+        if epoch > 4 and args.rank == 0:
             epoch_t_list.append(np.sum(iter_t_list))
             print("------------------------------------------------------------------------------------")
             print("Epoch: {:03d}, Loss: {:.4f}, Epoch Time: {:.3f}s".format(epoch, np.mean(loss_list), np.mean(epoch_t_list)))

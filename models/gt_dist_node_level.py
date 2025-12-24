@@ -14,6 +14,8 @@ from gt_sp.initialize import (
 )
 from torch_scatter import scatter
 
+from utils.logger import log
+
 # from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
 
 
@@ -56,14 +58,17 @@ class CoreAttention(nn.Module):
         # ===================================
         # Raw attention scores. [b, np, s+1, s+1]
         # ===================================
+        log(f"q:{q.shape},k:{k.shape},v:{v.shape}")
         q = q.transpose(1, 2)   # [b, np, s+1, hn]
         v = v.transpose(1, 2)  # [b, np, s+1, hn]
         k = k.transpose(1, 2).transpose(2, 3)  # [b, np, hn, s+1]
+        log(f"transpose->q:{q.shape},k:{k.shape},v:{v.shape}")
 
         # Scaled Dot-Product Attention.
         # Attention(Q, K, V) = softmax((QK^T)/sqrt(d_k))V
         q = q * self.scale
         x = torch.matmul(q, k)  # [b, h, q_len, k_len]
+        log(f"x shape:{x.shape}")
         score = x
         if attn_bias is not None:
             # attn_bias = attn_bias.repeat(1, self.num_heads, 1, 1)
@@ -91,8 +96,9 @@ class CoreAttention(nn.Module):
         x = torch.softmax(x, dim=3)
         x = self.att_dropout(x)
         x = x.matmul(v)  # [b, h, q_len, attn]
-
+        log(f"x shape:{x.shape}")
         x = x.transpose(1, 2).contiguous()  # [b, q_len, h, attn]
+        log(f"x shape:{x.shape}")
         return x,torch.abs(score)# return absoluted value # 对分数的绝对值求和，考虑正负数都起作用
     
 
@@ -196,8 +202,9 @@ class CoreAttention(nn.Module):
             x = x.float()
         
         # [b, s+p, hp]
+        log(f"x:{x.shape}")
         x = x.view(batch_size, s_len, -1)
-
+        log(f"x:{x.shape}")
         return x,score
 
 
@@ -238,6 +245,7 @@ class MultiHeadAttention(nn.Module):
         # ==================================
         # core attention computation
         # ==================================
+        log(f"q:{q.shape},k:{k.shape},v:{v.shape}")
         x,score = self.dist_attn(q, k, v, attn_bias, edge_index, attn_type,pruning_mask=pruning_mask,mask=mask)
 
         # =================
@@ -245,7 +253,7 @@ class MultiHeadAttention(nn.Module):
         # =================
 
         # [b, s/p+1, h]
-
+        log(f"x shape:{x.shape}")
         assert x.size() == orig_q_size
         return x,torch.sum(score, dim=1).squeeze(0)# 对分数的绝对值求和，考虑正负数都起作用
 
@@ -367,6 +375,7 @@ class GT(nn.Module):
         score_agg = None
         score_spe = []
         for enc_layer in self.layers:
+            log(f"output shape:{output.shape}")
             output,score = enc_layer(
                 output, 
                 edge_index=edge_index,
@@ -376,6 +385,8 @@ class GT(nn.Module):
             score_agg = score if score_agg==None else score_agg+score # 返回的score已经是绝对值了
             score_spe.append(score)
         # Output part
-        output = self.MLP_layer(output[0, :, :]) 
+        log(f"final output:{output.shape}")
+        output = self.MLP_layer(output[0, :, :])
+        log(f"final output:{output.shape}")
         
         return F.log_softmax(output, dim=1),score_agg,score_spe

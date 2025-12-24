@@ -3,6 +3,8 @@ import torch.nn.functional as F
 import numpy as np
 from models.graphormer_dist_node_level import Graphormer
 from models.gt_dist_node_level import GT
+from utils.logger import log
+import utils.logger as logger
 from utils.lr import PolynomialDecayLR
 import argparse
 import os
@@ -30,6 +32,7 @@ from utils.vis import high_attn_node_plot, vis_interface,pics_to_gif
 import utils.vis as vis
 
 def main():
+    # logger.IS_LOGGING = False
     parser = argparse.ArgumentParser(description='TorchGT node-level training arguments.')
     parser_add_main_args(parser)
     args = parser.parse_args()
@@ -59,6 +62,7 @@ def main():
 
     if args.dataset == 'pokec':
         y = torch.clamp(y, min=0) 
+    log(f"y shape:{y.shape}")
     split_idx = random_split_idx(y, frac_train=0.6, frac_valid=0.2, frac_test=0.2, seed=args.seed)
 
     if args.rank == 0:
@@ -177,6 +181,7 @@ def main():
         
         for i in range(num_batch):
             idx_i = flatten_train_idx[i*args.seq_len: (i+1)*args.seq_len]
+            log(f"rank:{args.rank},idx:{idx_i}")
             packed_data = get_batch_reorder_blockize(args, feature, y, idx_i.to("cpu"), sub_split_seq_lens, device, edge_index, N, k=8, block_size=16, beta_coeffi=beta_coeffi_list[beta_idx])
 
             x_i, y_i, edge_index_i, attn_bias,idx_i = packed_data
@@ -207,6 +212,8 @@ def main():
             # if epoch>100:
             #     mask = vis.mask_high_attn(score_agg,idx_i,edge_index,epoch)
             # ==================================================
+            log(f"x shape:{x_i.shape}")
+            log(f"rank:{args.rank},i:{i},x:{x_i}")
             out_i,score_agg,score_spe = model(x_i, attn_bias, edge_index_i, attn_type=attn_type,mask=mask)
             
             loss = F.nll_loss(out_i, y_i.long())

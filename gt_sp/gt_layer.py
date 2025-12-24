@@ -25,6 +25,7 @@ from gt_sp.utils import (
     extend_global_token0,
     copy_global_token0,
 )
+from utils.logger import log
 
 
 class _SeqAllToAll(torch.autograd.Function):
@@ -42,6 +43,7 @@ class _SeqAllToAll(torch.autograd.Function):
         output_list = [torch.empty_like(input_list[0]) for _ in range(seq_world_size)]
 
         torch.distributed.all_to_all(output_list, input_list, group=group)
+        # log(torch.equal(output_list[0],output_list[1]))
         return torch.cat(output_list, dim=gather_idx).contiguous()
 
     @staticmethod
@@ -270,6 +272,7 @@ class DistributedAttentionNodeLevel(torch.nn.Module):
         # q, k, v: [b, s, np, hn]
         # -> [b, s, hp]
         # context_layer,score_layer = self.local_attn(query_layer, key_layer, value_layer, attn_bias_layer, edge_index, attn_type, *args)
+        log(f"qlayer:{query_layer.shape},klayer:{key_layer.shape},vlayer:{value_layer.shape}")
         context_layer,score_layer = self.local_attn(
             query_layer, 
             key_layer, 
@@ -288,7 +291,8 @@ class DistributedAttentionNodeLevel(torch.nn.Module):
             
             # [b, s, hp] -> [b, s/p, h]
             # gather_idx: 1, scatter_idx: 2
-            
+            log(f"context_layer:{context_layer.shape}")
+            log(f"score layer:{score_layer.shape}")
             output = _SeqAllToAll.apply(self.spg, context_layer, self.gather_idx, self.scatter_idx)
             score = _SeqAllToAll.apply(self.spg, score_layer, self.gather_idx, self.scatter_idx)
         else:

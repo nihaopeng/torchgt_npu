@@ -8,7 +8,7 @@
 
 ## torch_npu
 
-`bash run.sh origin 0 cora`
+`bash run.sh origin 0,1 cora`
 
 ## install
 

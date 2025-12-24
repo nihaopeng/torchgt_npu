@@ -9,7 +9,7 @@ from functools import partial
 import scipy.sparse as sp
 import scipy
 from numpy.linalg import inv
-from torch_geometric.datasets import Planetoid, Amazon, Actor, CitationFull, Coauthor
+from torch_geometric.datasets import Planetoid, Amazon, Actor, CitationFull, Coauthor, Reddit
 from torch.nn.functional import normalize
 import torch_geometric.transforms as T
 from torch_geometric.utils import coalesce
@@ -137,13 +137,39 @@ def get_dataset(dataset_name):
             edge_index = coalesce(edge_index, num_nodes=data_x.size(0))
             
         elif dataset_name in ['reddit']:
-            adj = sp.load_npz(os.path.join(dataset_dir, dataset_name, '{}_adj.npz'.format(dataset_name)))
-            data_x = np.load(os.path.join(dataset_dir, dataset_name, '{}_feat.npy'.format(dataset_name)))
-            data_y = np.load(os.path.join(dataset_dir, dataset_name, '{}_labels.npy'.format(dataset_name)))
+            dataset = Reddit(root=f'./dataset/{dataset_name}')
+            data = dataset[0]
+            # 1. 构建对称的邻接矩阵（无自环）
+            edge_index = data.edge_index.numpy()
+            num_nodes = data.num_nodes
+            # 构建邻接矩阵（COO格式）
+            row, col = edge_index[0], edge_index[1]
+            adj = sp.coo_matrix(
+                (np.ones(row.shape[0]), (row, col)),
+                shape=(num_nodes, num_nodes)
+            )
+            # 转换为对称矩阵（对于无向图）
+            adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
+            features = data.x.numpy()
+            labels = data.y.numpy()
+            # print(labels.shape)
+            # sp.save_npz(f'./{dataset_dir}/{dataset_name}/{dataset_name}_adj.npz', adj.tocoo())
+            # # 2. 保存特征矩阵为 feat.npy
+            # np.save(f'./{dataset_dir}/{dataset_name}/{dataset_name}_feat.npy', features)
+            # # 3. 保存标签为 labels.npy
+            # np.save(f'./{dataset_dir}/{dataset_name}/{dataset_name}_labels.npy', labels)
+            # adj = sp.load_npz(os.path.join(dataset_dir, dataset_name, '{}_adj.npz'.format(dataset_name)))
+            # data_x = np.load(os.path.join(dataset_dir, dataset_name, '{}_feat.npy'.format(dataset_name)))
+            # data_y = np.load(os.path.join(dataset_dir, dataset_name, '{}_labels.npy'.format(dataset_name)))
+            adj = adj
+            data_x = features
+            data_y = labels
             # random_state = np.random.RandomState(split_seed)
             data_x = torch.tensor(data_x, dtype=torch.float32)
             data_y = torch.tensor(data_y)
-            data_y = torch.argmax(data_y, -1)
+            # print(f"data_y shape:{data_y.shape}")
+            # data_y = torch.argmax(data_y, -1)
+            # print(f"data_y shape:{data_y.shape}")
             normalized_adj = adj_normalize(adj)
             column_normalized_adj = column_normalize(adj)
 
