@@ -324,6 +324,51 @@ class MLPReadout(nn.Module):
 
 
 
+## =================================Centrality Encoding====================================
+
+class CentralityEncodingLayer(nn.Module):
+    def __init__(self,hidden_dim,num_in_degree=513, num_out_degree=513):
+        """
+            num_in_degree:节点最大入度，513，0代表填充位
+            num_out_degree: 节点最大出度
+            hidden_dim:隐层维度
+        """
+        super().__init__()
+        self.num_in_degree = num_in_degree
+        self.num_out_degree = num_out_degree
+        self.in_degree_encoder = nn.Embedding(num_in_degree, hidden_dim, padding_idx=0)
+        self.out_degree_encoder = nn.Embedding(num_out_degree, hidden_dim, padding_idx=0)
+
+    def forward(self,x,in_degree,out_degree):
+        
+        """
+            x         : Tensor , 每个节点的 feature
+            in_degree : Tensor , 每个节点的入度
+            out_degree: Tensor , 每个节点的出度
+        """
+        
+        in_degree_embedding = self.in_degree_encoder(in_degree.long())
+        out_degree_embedding = self.out_degree_encoder(out_degree.long())
+        
+        # 截断,把出入度大于 512 的点统一归类为 512
+        # 为什么 -1？因为索引从0开始，最大索引是 num_in_degree - 1
+        # 比如 size=512，最大能接受的索引是 511
+        in_degree = in_degree.clamp(max=self.num_in_degree - 1)
+        out_degree = out_degree.clamp(max=self.num_out_degree - 1)
+        
+        x = x + in_degree_embedding + out_degree_embedding
+        return x       
+
+
+
+## ========================================================================================
+
+
+
+
+
+
+
 class GT(nn.Module):
     """GT for node-level task.
     No global token.
@@ -342,9 +387,23 @@ class GT(nn.Module):
         attention_dropout_rate,
         ffn_dim,
         num_global_node,
+        
+        # ===== centrality encoding =====
+        num_in_degree: int,
+        num_out_degree: int,
+        
+        # ===== =================== =====
+        
     ):
         super().__init__()
         self.node_encoder = nn.Linear(input_dim, hidden_dim)
+        
+        # ===== centrality encoding =====
+        self.centrality_encoding = CentralityEncodingLayer(hidden_dim=hidden_dim, num_in_degree = num_in_degree,num_out_degree = num_out_degree)
+        # =====                     =====
+        
+        
+        
         self.input_dropout = nn.Dropout(input_dropout_rate)
         
         encoders = [
@@ -360,13 +419,19 @@ class GT(nn.Module):
         self.apply(lambda module: init_params(module, n_layers=n_layers))
         
         
-    def forward(self, x, attn_bias, edge_index, perturb=None, attn_type=None, mask= None, pruning_mask=None):
+    def forward(self, x, attn_bias, edge_index, in_degree, out_degree,perturb=None, attn_type=None, mask= None, pruning_mask=None):
         # x -> [bs=1, s/p, x_d]
         x = x.unsqueeze(0) 
         n_graph = x.shape[0] 
         
         # [bs, s/p, x_d] -> [bs, s/p, h]
-        node_feature = self.node_encoder(x)     
+        node_feature = self.node_encoder(x)            
+        
+        # ===== centrality encoding =====
+        in_degree = in_degree.unsqueeze(0)
+        out_degree = out_degree.unsqueeze(0)
+        node_feature = self.centrality_encoding(node_feature, in_degree, out_degree)
+        # =====                     =====
         
         output = self.input_dropout(node_feature)
         

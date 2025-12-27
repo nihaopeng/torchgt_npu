@@ -474,6 +474,7 @@ def get_batch_reorder_blockize(args, x, y, idx_batch, rest_split_sizes, device, 
         y_i = torch.index_select(y_i, 0, sorted_indices)
     else:
         edge_index_i = edge_index_i_raw
+        attn_bias = None
     
 
     if idx_batch.shape[0] < seq_length:
@@ -967,3 +968,20 @@ def check_conditions(edge_index, num_nodes):
 
     print("All conditions are satisfied.")
     return True
+
+
+
+from torch_geometric.utils import degree
+def get_node_degrees(edge_index, num_nodes):
+    """
+        计算入度出度,用于计算中心度编码
+        edge_index: [2, E]
+    """
+    in_degree = degree(index=edge_index[1], num_nodes=num_nodes, dtype=torch.long)
+    out_degree = degree(index=edge_index[0], num_nodes=num_nodes, dtype=torch.long)
+
+    # 数值 +1 (为了避开 padding_idx=0)
+    in_degree = in_degree + 1
+    out_degree = out_degree + 1
+
+    return in_degree, out_degree

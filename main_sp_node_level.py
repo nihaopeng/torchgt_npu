@@ -24,7 +24,7 @@ from gt_sp.initialize import (
 )
 from gt_sp.reducer import sync_params_and_buffers, Reducer
 from gt_sp.evaluate import sparse_eval_gpu
-from gt_sp.utils import random_split_idx, get_batch_reorder_blockize, check_conditions
+from gt_sp.utils import random_split_idx, get_batch_reorder_blockize, check_conditions,get_node_degrees
 from utils.parser_node_level import parser_add_main_args
 from collections import deque
 
@@ -32,7 +32,7 @@ from utils.vis import high_attn_node_plot, vis_interface,pics_to_gif
 import utils.vis as vis
 
 def main():
-    # logger.IS_LOGGING = False
+    logger.IS_LOGGING = False
     parser = argparse.ArgumentParser(description='TorchGT node-level training arguments.')
     parser_add_main_args(parser)
     args = parser.parse_args()
@@ -60,6 +60,12 @@ def main():
     edge_index = torch.load(os.path.join(args.dataset_dir, args.dataset, 'edge_index.pt'))
     N = feature.shape[0]
 
+    # ===== 计算centrality encoding =====
+    graph_in_degree, graph_out_degree = get_node_degrees(edge_index, N)
+    # ==================================
+    
+    
+    
     if args.dataset == 'pokec':
         y = torch.clamp(y, min=0) 
     log(f"y shape:{y.shape}")
@@ -86,12 +92,16 @@ def main():
                                 device=device,
                                 dtype=torch.int64)
     # Broadcast
+    # 将 src_rank 的训练集节点 train_id 广播到 group 所有卡上
     if seq_parallel_world_size > 1:
         dist.broadcast(flatten_train_idx, src_rank, group=group)
 
     # Initialize global token indices
     seq_len_per_rank = get_sequence_length_per_rank()
-    sub_real_seq_len = seq_len_per_rank + args.num_global_node
+    # 一个进程要处理的子序列的真正长度需要加上 VNode
+    sub_real_seq_len = seq_len_per_rank + args.num_global_node 
+    # 每个子序列训练时需要加上一个 global_token 作为 VNode
+    # 所有 global_token 的 node_id 就是[0 , sub_real_seq_len , 2*sub_real_seq_len]
     global_token_indices = list(range(0, seq_parallel_world_size * sub_real_seq_len, sub_real_seq_len))
 
     # Last batch fix sequence length
@@ -138,7 +148,9 @@ def main():
             input_dropout_rate=args.input_dropout_rate,
             attention_dropout_rate=args.attention_dropout_rate,
             ffn_dim=args.ffn_dim,
-            num_global_node=args.num_global_node
+            num_global_node=args.num_global_node,
+            num_in_degree = 513,
+            num_out_degree = 513 
         ).to(device)
         
     if args.rank == 0:
@@ -182,9 +194,21 @@ def main():
         for i in range(num_batch):
             idx_i = flatten_train_idx[i*args.seq_len: (i+1)*args.seq_len]
             log(f"rank:{args.rank},idx:{idx_i}")
+            
+            # == 关闭reorder  ==
+            args.reorder = False
+            # == ===========  ==
             packed_data = get_batch_reorder_blockize(args, feature, y, idx_i.to("cpu"), sub_split_seq_lens, device, edge_index, N, k=8, block_size=16, beta_coeffi=beta_coeffi_list[beta_idx])
 
             x_i, y_i, edge_index_i, attn_bias,idx_i = packed_data
+            
+            # == node degree in the sequnence ==
+            in_degree = graph_in_degree[idx_i].to(device)
+            out_degree = graph_out_degree[idx_i].to(device)
+            # == ============================ == 
+            
+            
+            
             
             if attn_bias is not None:
                 x_i, y_i, edge_index_i, attn_bias,idx_i = x_i.to(device), y_i.to(device), edge_index_i.to(device), attn_bias.to(device),idx_i.to(device)
@@ -212,9 +236,11 @@ def main():
             # if epoch>100:
             #     mask = vis.mask_high_attn(score_agg,idx_i,edge_index,epoch)
             # ==================================================
+            
+            
             log(f"x shape:{x_i.shape}")
             log(f"rank:{args.rank},i:{i},x:{x_i}")
-            out_i,score_agg,score_spe = model(x_i, attn_bias, edge_index_i, attn_type=attn_type,mask=mask)
+            out_i,score_agg,score_spe = model(x_i, attn_bias, edge_index_i,in_degree,out_degree, attn_type=attn_type,mask=mask)
             
             loss = F.nll_loss(out_i, y_i.long())
             optimizer.zero_grad(set_to_none=True)
@@ -253,9 +279,9 @@ def main():
 
         if args.rank == 0 and epoch % 5 == 0:   
             t4 = time.time()
-            train_acc = sparse_eval_gpu(args, model, feature, y, split_idx['train'], attn_bias, edge_index, device) 
-            val_acc = sparse_eval_gpu(args, model, feature, y, split_idx['valid'], attn_bias, edge_index, device)
-            test_acc = sparse_eval_gpu(args, model, feature, y, split_idx['test'], attn_bias, edge_index, device)
+            train_acc = sparse_eval_gpu(args, model, feature, y, split_idx['train'], attn_bias, edge_index, device,graph_in_degree, graph_out_degree) 
+            val_acc = sparse_eval_gpu(args, model, feature, y, split_idx['valid'], attn_bias, edge_index, device,graph_in_degree, graph_out_degree)
+            test_acc = sparse_eval_gpu(args, model, feature, y, split_idx['test'], attn_bias, edge_index, device,graph_in_degree, graph_out_degree)
             if epoch % 20 ==0 and i==0:
                 vis.train_acc.append(train_acc)
                 vis.val_acc.append(val_acc)

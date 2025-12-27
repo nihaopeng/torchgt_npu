@@ -28,11 +28,11 @@ def initialize_distributed(args):
         if torch.distributed.get_rank() == 0:
             print('torch distributed is already initialized, '
                   'skipping initialization ...', flush=True)
-        args.rank = torch.distributed.get_rank()
-        args.world_size = torch.distributed.get_world_size()
+        args.rank = torch.distributed.get_rank()                # rank 编号
+        args.world_size = torch.distributed.get_world_size()    # rank 数
 
-    else:
-        args.rank = int(os.environ["RANK"])
+    else:   
+        args.rank = int(os.environ["RANK"])                     
         args.world_size = int(os.environ["WORLD_SIZE"])
         print(f"args.world_size:{args.world_size}")
         if args.rank == 0:
@@ -40,13 +40,17 @@ def initialize_distributed(args):
 
         # Manually set the device ids.
         if device_count > 0:
-            device = args.rank % device_count
-            if args.local_rank is not None:
+            # device_count: 当前node上 GPU 数量
+            # device      : rank 在当前node对应的 GPU 编号 
+            device = args.rank % device_count          
+            # local_rank  : 所有rank会分到每个node上的每个GPU上,这是本node范围内的 rank 号
+            # 由于单卡单进程,local_rk应该等于device号          
+            if args.local_rank is not None:                     
                 assert args.local_rank == device, \
                     'expected local-rank to be the same as rank % device-count.'
             else:
                 args.local_rank = device
-            torch.cuda.set_device(device)
+            torch.cuda.set_device(device)                       # 这个rank里所有的 tensor.cuda() 操作在这张卡上进行
     
     global _GLOBAL_TOKEN_NUM
     _GLOBAL_TOKEN_NUM = args.num_global_node
@@ -66,40 +70,49 @@ def initialize_distributed(args):
 
 
 def initialize_sequence_parallel(
-    seq_length: int,
+    seq_length: int,                            # 输入序列的总长度
     tensor_model_parallel_size: int = 1,
     pipeline_model_parallel_size: int = 1,
-    sequence_parallel_size: int = 1,
+    sequence_parallel_size: int = 1,            # 序列并行的规模，即并行处理一个序列需要几个卡
 ) -> None:
     # Get world size and rank. Ensure some consistencies.
     assert torch.distributed.is_initialized()
-    world_size: int = torch.distributed.get_world_size()
+    world_size: int = torch.distributed.get_world_size()     
     
     if sequence_parallel_size is None:
-        sequence_parallel_size = world_size
+        sequence_parallel_size = world_size                  
     else:
         assert world_size % sequence_parallel_size == 0
+        
+    # world_size: 总卡数
+    # sequence_parallel_size:一个序列并行需要的卡数
+    # num_sequence_parallel_groups: 可以进行几组序列并行
     num_sequence_parallel_groups: int = world_size // sequence_parallel_size
     
     rank = torch.distributed.get_rank()
     
     # For sequence parallel
-    global _SEQUENCE_PARALLEL_GROUP
-    global _SEQUENCE_PARALLEL_WORLD_SIZE
-    global _SEQUENCE_PARALLEL_RANK
-    global _SEQUENCE_LENGTH
-    global _SEQUENCE_LENGTH_PER_RANK 
+    global _SEQUENCE_PARALLEL_GROUP         # 当前进程所属的通信组
+    global _SEQUENCE_PARALLEL_WORLD_SIZE    # 通信组内的 rank 数        
+    global _SEQUENCE_PARALLEL_RANK          # 当前 rank 在group内的 id
+    global _SEQUENCE_LENGTH                 # 总序列长度
+    global _SEQUENCE_LENGTH_PER_RANK        # 每张卡分到的子序列长度
     
     # Build the sequence parallel groups.
     _SEQUENCE_LENGTH = seq_length
     assert _SEQUENCE_PARALLEL_GROUP is None, \
     'sequence parallel group is already initialized'
     for i in range(num_sequence_parallel_groups):
+        
+        # group 内的 rank
+        # e.g. group[1]:range(4, 8) -> [4, 5, 6, 7]
         ranks = range(i * sequence_parallel_size,
                         (i + 1) * sequence_parallel_size)
+        
+        # 为这些rank创建一个新的通信组
         group = torch.distributed.new_group(ranks)
         if rank in ranks:
-            _SEQUENCE_PARALLEL_GROUP = group
+            _SEQUENCE_PARALLEL_GROUP = group        
             _SEQUENCE_PARALLEL_RANK = ranks.index(rank)
             _SEQUENCE_PARALLEL_WORLD_SIZE = len(ranks)
             _SEQUENCE_LENGTH_PER_RANK = seq_length // _SEQUENCE_PARALLEL_WORLD_SIZE # for node-level tasks
@@ -141,9 +154,11 @@ def get_sequence_parallel_rank():
 def get_sequence_parallel_src_rank():
     """Calculate the global rank corresponding to the first local rank
     in the sequence parallel group."""
-    global_rank = torch.distributed.get_rank()
-    local_world_size = get_sequence_parallel_world_size()
-    return (global_rank // local_world_size) * local_world_size
+    global_rank = torch.distributed.get_rank()                  # global GPU 编号
+    local_world_size = get_sequence_parallel_world_size()       # 单个group内的 GPU数
+    # global_rank // local_world_size: GPU属于的group编号 group_id 
+    # group_id * local_world_size = group_src_rank: group内的src_rank号
+    return (global_rank // local_world_size) * local_world_size  
 
 
 def get_sequence_length():
