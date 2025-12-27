@@ -24,7 +24,7 @@ from gt_sp.initialize import (
 )
 from gt_sp.reducer import sync_params_and_buffers, Reducer
 from gt_sp.evaluate import sparse_eval_gpu
-from gt_sp.utils import random_split_idx, get_batch_reorder_blockize, check_conditions,get_node_degrees
+from gt_sp.utils import random_split_idx, get_batch_reorder_blockize, check_conditions,get_node_degrees,compute_graphormer_data
 from utils.parser_node_level import parser_add_main_args
 from collections import deque
 
@@ -63,6 +63,13 @@ def main():
     # ===== 计算centrality encoding =====
     graph_in_degree, graph_out_degree = get_node_degrees(edge_index, N)
     # ==================================
+    
+    # =====    attention bias     =====
+    print("图空间结构预处理计算中...")
+    global_spatial_pos, global_edge_input = compute_graphormer_data(edge_index, N, max_dist=5)
+    print("预处理完成")
+    # ================================== 
+    
     
     
     
@@ -149,8 +156,12 @@ def main():
             attention_dropout_rate=args.attention_dropout_rate,
             ffn_dim=args.ffn_dim,
             num_global_node=args.num_global_node,
-            num_in_degree = 513,
-            num_out_degree = 513 
+            num_in_degree = 512,
+            num_out_degree = 512,
+            num_spatial=512,
+            num_edges=1024,
+            max_dist=5,
+            edge_dim=64
         ).to(device)
         
     if args.rank == 0:
@@ -205,8 +216,15 @@ def main():
             # == node degree in the sequnence ==
             in_degree = graph_in_degree[idx_i].to(device)
             out_degree = graph_out_degree[idx_i].to(device)
-            # == ============================ == 
+            # == ========================  == 
             
+            # == spatial and edge info in the sequence ==
+                # spatial_pos 切片: [Batch, Batch]
+            spatial_pos_i = global_spatial_pos[idx_i.to("cpu")][:, idx_i.to("cpu")].to(device)
+            
+                # edge_input 切片: [Batch, Batch, Max_Dist]
+            edge_input_i = global_edge_input[idx_i.to("cpu")][:, idx_i.to("cpu"), :].to(device)
+            # =================================================
             
             
             
@@ -240,7 +258,7 @@ def main():
             
             log(f"x shape:{x_i.shape}")
             log(f"rank:{args.rank},i:{i},x:{x_i}")
-            out_i,score_agg,score_spe = model(x_i, attn_bias, edge_index_i,in_degree,out_degree, attn_type=attn_type,mask=mask)
+            out_i,score_agg,score_spe = model(x_i, attn_bias, edge_index_i,in_degree,out_degree, spatial_pos_i,edge_input_i,attn_type=attn_type,mask=mask)
             
             loss = F.nll_loss(out_i, y_i.long())
             optimizer.zero_grad(set_to_none=True)
@@ -279,9 +297,9 @@ def main():
 
         if args.rank == 0 and epoch % 5 == 0:   
             t4 = time.time()
-            train_acc = sparse_eval_gpu(args, model, feature, y, split_idx['train'], attn_bias, edge_index, device,graph_in_degree, graph_out_degree) 
-            val_acc = sparse_eval_gpu(args, model, feature, y, split_idx['valid'], attn_bias, edge_index, device,graph_in_degree, graph_out_degree)
-            test_acc = sparse_eval_gpu(args, model, feature, y, split_idx['test'], attn_bias, edge_index, device,graph_in_degree, graph_out_degree)
+            train_acc = sparse_eval_gpu(args, model, feature, y, split_idx['train'], attn_bias, edge_index, device,graph_in_degree, graph_out_degree,global_spatial_pos,global_edge_input) 
+            val_acc = sparse_eval_gpu(args, model, feature, y, split_idx['valid'], attn_bias, edge_index, device,graph_in_degree, graph_out_degree,global_spatial_pos,global_edge_input)
+            test_acc = sparse_eval_gpu(args, model, feature, y, split_idx['test'], attn_bias, edge_index, device,graph_in_degree, graph_out_degree,global_spatial_pos,global_edge_input)
             if epoch % 20 ==0 and i==0:
                 vis.train_acc.append(train_acc)
                 vis.val_acc.append(val_acc)

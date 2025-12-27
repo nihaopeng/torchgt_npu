@@ -985,3 +985,44 @@ def get_node_degrees(edge_index, num_nodes):
     out_degree = out_degree + 1
 
     return in_degree, out_degree
+
+
+# TIP:如果要改max_dist，模型参数的max_dist也要改
+def compute_graphormer_data(edge_index, num_nodes, max_dist=5):
+    """
+    输入: edge_index [2, E]
+    输出: spatial_pos [N, N], edge_input [N, N, Max_Dist]
+    """
+  
+    # 1. 准备容器 (全 0 初始化，0 就是 Padding/不可达)
+    spatial_pos = torch.zeros((num_nodes, num_nodes), dtype=torch.long)
+    edge_input = torch.zeros((num_nodes, num_nodes, max_dist), dtype=torch.long)
+    
+    # 2. 建图 (只用 edge_index)
+    edge_list = edge_index.t().tolist()
+    G = nx.Graph()
+    G.add_nodes_from(range(num_nodes))
+    G.add_edges_from(edge_list)
+    
+    # 3. 计算所有点对路径
+    for i in range(num_nodes):
+        # 计算从节点 i 出发，距离不超过 max_dist 的所有路径
+        paths = nx.single_source_shortest_path(G, i, cutoff=max_dist)
+        
+        for j, path in paths.items():
+            # path 是节点列表，例如 [i, n1, n2, j]
+            dist = len(path) - 1
+            
+            # --- 填 Spatial Pos ---
+            # 0保留给Padding，所以距离都要+1 (0->1, 1->2...)
+            spatial_pos[i, j] = dist + 1
+            
+            # --- 填 Edge Input ---
+            if dist == 0: continue # 自己到自己没有边
+            
+            # 填充路径上的边类型
+            # 因为你没有提供 edge_attr，我们默认所有边类型都是 1
+            for k in range(dist):
+                edge_input[i, j, k] = 1 
+
+    return spatial_pos, edge_input

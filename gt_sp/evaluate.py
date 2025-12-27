@@ -317,7 +317,7 @@ def sparse_eval_cpu_subset_batch_dummy_bias(args, model, x, y, sub_idx, dummy_at
 
 
 @torch.no_grad()
-def sparse_eval_gpu(args, model, x, y, sub_idx, attn_bias, edge_index, device,graph_in_degree, graph_out_degree):
+def sparse_eval_gpu(args, model, x, y, sub_idx, attn_bias, edge_index, device,graph_in_degree, graph_out_degree,global_spatial_pos,global_edge_input):
     """
     Evaluate the model on train/valid/test subset of nodes in a batched way on GPU.
     lager seq_len will be slower 
@@ -352,13 +352,22 @@ def sparse_eval_gpu(args, model, x, y, sub_idx, attn_bias, edge_index, device,gr
         out_degree = graph_out_degree[idx_i].to(device)
         # ===========================
         
+        # == spatial and edge info in the sequence ==
+        # spatial_pos 切片: [Batch, Batch]
+        spatial_pos_i = global_spatial_pos[idx_i.to("cpu")][:, idx_i.to("cpu")].to(device)
+        
+        # edge_input 切片: [Batch, Batch, Max_Dist]
+        edge_input_i = global_edge_input[idx_i.to("cpu")][:, idx_i.to("cpu"), :].to(device)
+        # =================================================
+        
+        
         # if idx_i.shape[0] < args.seq_len:
         #     dummy_attn_bias = torch.zeros(idx_i.shape[0], idx_i.shape[0], args.attn_bias_dim, dtype=torch.float32)
         edge_index_i = gen_sub_edge_index(edge_index, idx_i, N) # [2, num_edges] index plused global token
         
         x_i, y_i, edge_index_i = x_i.to(device), y_i.to(device), edge_index_i.to(device)
 
-        pred,score_agg,score_spe = model(x_i, attn_bias, edge_index_i, attn_type=attn_type,in_degree=in_degree, out_degree=out_degree)
+        pred,score_agg,score_spe = model(x_i, attn_bias, edge_index_i, attn_type=attn_type,in_degree=in_degree, out_degree=out_degree,spatial_pos = spatial_pos_i,edge_input = edge_input_i)
         loss = F.nll_loss(pred, y_i)
         loss_list.append(loss.item())
         
