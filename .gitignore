@@ -1,4 +1,5 @@
 dataset/
+dataset
 kernel_meta*
 model_ckpt/
 __pycache__/
@@ -7,6 +8,9 @@ cache/
 .envs/
 *.log
 *.csv
+*.png
+*.jpg
+
 fusion_result.json
 vis/
 exps/
