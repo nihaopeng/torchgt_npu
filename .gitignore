@@ -6,11 +6,11 @@ __pycache__/
 .ipynb_checkpoints/
 cache/
 .envs/
+.vscode/
 *.log
 *.csv
 *.png
 *.jpg
-
 fusion_result.json
 vis/
 exps/
