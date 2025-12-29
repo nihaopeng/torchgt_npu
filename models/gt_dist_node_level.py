@@ -480,7 +480,7 @@ class GT(nn.Module):
         attention_dropout_rate,
         ffn_dim,
         num_global_node,
-        
+        args,
         # ===== centrality encoding =====
         num_in_degree: int,
         num_out_degree: int,
@@ -493,6 +493,7 @@ class GT(nn.Module):
         
     ):
         super().__init__()
+        self.args = args
         self.node_encoder = nn.Linear(input_dim, hidden_dim)
         
         # ===== centrality encoding =====
@@ -534,20 +535,22 @@ class GT(nn.Module):
         node_feature = self.node_encoder(x)            
         
         # ===== centrality encoding =====
-        in_degree = in_degree.unsqueeze(0)
-        out_degree = out_degree.unsqueeze(0)
-        node_feature = self.centrality_encoding(node_feature, in_degree, out_degree)
+        if self.args.struct_enc=="True":
+            in_degree = in_degree.unsqueeze(0)
+            out_degree = out_degree.unsqueeze(0)
+            node_feature = self.centrality_encoding(node_feature, in_degree, out_degree)
         # =====                     =====
         output = self.input_dropout(node_feature)
         
         # =====   attention_bias    =====
-        spatial_pos = spatial_pos.unsqueeze(0)
-        edge_input = edge_input.unsqueeze(0)
-        bias = self.attention_bias(spatial_pos, edge_input)
-        if attn_bias is not None:
-            attn_bias = bias + attn_bias
-        else:
-            attn_bias = bias
+        if self.args.struct_enc=="True":
+            spatial_pos = spatial_pos.unsqueeze(0)
+            edge_input = edge_input.unsqueeze(0)
+            bias = self.attention_bias(spatial_pos, edge_input)
+            if attn_bias is not None:
+                attn_bias = bias + attn_bias
+            else:
+                attn_bias = bias
         # =====                     =====     
         
         

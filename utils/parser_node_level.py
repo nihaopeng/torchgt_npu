@@ -53,6 +53,8 @@ def parser_add_main_args(parser):
     parser.add_argument('--switch_freq', type=int, default=5)
     parser.add_argument('--reorder', action='store_true', default=False,
                         help='TorchGT mode')
+    parser.add_argument('--struct_enc', type=str, default="False", help='whether to enable structure encoding')
+    parser.add_argument('--max_dist', type=int, default=5)
     
     # distributed args
     parser.add_argument('--rank', type=int, default=None,

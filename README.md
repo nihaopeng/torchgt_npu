@@ -8,7 +8,7 @@
 
 ## torch_npu
 
-`bash run.sh origin 0,1 cora`
+`bash run.sh origin 0,1 cora True 5`[代码版本][启动的GPU][数据集][是否启用位置编码][最大路径距离]
 
 ## install
 

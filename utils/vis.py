@@ -60,7 +60,7 @@ def high_attn(score_agg:np.ndarray,score_spe:np.ndarray,epoch:int):
         edgecolor="black",
         color="#1f77b4"
     )
-    plt.xlim(0, 200)
+    # plt.xlim(0, 200)
     plt.title(f"注意力分数分布直方图 (n={score_agg.size})", fontsize=14, fontweight="bold")
     plt.xlabel("注意力分数值", fontsize=12)
     plt.ylabel("频数（像素/元素个数）", fontsize=12)
@@ -296,8 +296,8 @@ def vis_interface(score_agg,score_spe,idx,edge_index,epoch):
     epochs.append(epoch)
     if not os.path.exists("vis"):
         os.mkdir("vis")
-    # high_attn(score_agg,score_spe,epoch)
-    # neighbor(score_agg,idx,edge_index,epoch)
-    # relativity(score_agg,idx,edge_index,epoch)
-    # high_attn_node(score_agg,idx,edge_index,epoch)
+    high_attn(score_agg,score_spe,epoch)
+    neighbor(score_agg,idx,edge_index,epoch)
+    relativity(score_agg,idx,edge_index,epoch)
+    high_attn_node(score_agg,idx,edge_index,epoch)
     # distance(score_agg,idx,edge_index,epoch)

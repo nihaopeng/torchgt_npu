@@ -66,7 +66,7 @@ def main():
     
     # =====    attention bias     =====
     print("图空间结构预处理计算中...")
-    global_spatial_pos, global_edge_input = compute_graphormer_data(edge_index, N, max_dist=5)
+    global_spatial_pos, global_edge_input = compute_graphormer_data(edge_index, N, max_dist=args.max_dist)
     print("预处理完成")
     # ================================== 
     
@@ -156,11 +156,12 @@ def main():
             attention_dropout_rate=args.attention_dropout_rate,
             ffn_dim=args.ffn_dim,
             num_global_node=args.num_global_node,
+            args=args,
             num_in_degree = 512,
             num_out_degree = 512,
             num_spatial=512,
             num_edges=1024,
-            max_dist=5,
+            max_dist=args.max_dist,
             edge_dim=64
         ).to(device)
         
@@ -207,7 +208,8 @@ def main():
             log(f"rank:{args.rank},idx:{idx_i}")
             
             # == 关闭reorder  ==
-            args.reorder = False
+            if args.struct_enc=="True":
+                args.reorder = False
             # == ===========  ==
             packed_data = get_batch_reorder_blockize(args, feature, y, idx_i.to("cpu"), sub_split_seq_lens, device, edge_index, N, k=8, block_size=16, beta_coeffi=beta_coeffi_list[beta_idx])
 
@@ -281,9 +283,9 @@ def main():
             if epoch == args.epochs-1:
             # if epoch == 61:
                 # pics_to_gif(vis.score_hist_flist,"./vis/score_var.gif")
-                # vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,"./vis/高注意力邻居占比")
-                # vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,"./vis/高注意力相对应比例")
-                # high_attn_node_plot()
+                vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,"./vis/高注意力邻居占比")
+                vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,"./vis/高注意力相对应比例")
+                high_attn_node_plot()
                 vis.acc_plot(vis.epochs,[vis.train_acc,vis.test_acc,vis.val_acc],["train_acc","test_acc","val_acc"])
     
         loss_list.append(loss.item())
