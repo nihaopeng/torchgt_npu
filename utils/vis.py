@@ -17,13 +17,17 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei']
 
 score_hist_flist = []
 score_neighbor_ratio_list = []
+score_neighbor_ratio_in_neighbor_list = []
 score_relativity_ratio_list = []
+high_attn_node_neighbor_neighbor_num = []
 node_attned_list = []
 pers = [95,90,80,70,60,40,20]
 epochs = []
 train_acc = []
 val_acc = []
 test_acc = []
+
+vis_dir = ""
 
 def pics_to_gif(flist,output_gif, frame_duration=100, loop=0):
     """
@@ -65,9 +69,51 @@ def high_attn(score_agg:np.ndarray,score_spe:np.ndarray,epoch:int):
     plt.xlabel("注意力分数值", fontsize=12)
     plt.ylabel("频数（像素/元素个数）", fontsize=12)
     plt.tight_layout()
-    fig_full_path = os.path.join("vis","score_hist",f"attention_histogram_{epoch}.png")
-    if not os.path.exists("./vis/score_hist"):
-        os.mkdir("./vis/score_hist")
+    fig_full_path = os.path.join(vis_dir,"score_hist",f"attention_histogram_{epoch}.png")
+    if not os.path.exists(f"./{vis_dir}/score_hist"):
+        os.makedirs(f"./{vis_dir}/score_hist")
+    plt.savefig(fig_full_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    score_hist_flist.append(fig_full_path)
+
+def neighbor_high_attn(score_agg:np.ndarray,score_spe:np.ndarray,edge_index:np.ndarray,idx:np.ndarray,epoch:int):
+    # 步骤1：构建真实邻居边集合（无序，避免重复）
+    edge_set = set()
+    for u, v in edge_index.T:
+        edge_set.add((min(u, v), max(u, v)))
+    # 步骤2：筛选score_agg中属于真实邻居的分数
+    neighbor_scores = []
+    M = score_agg.shape[0]
+    for i in range(M):
+        for j in range(M):
+            if i == j:  # 排除自环（节点对自身无邻居关系）
+                continue
+            # 获取score_agg[i][j]对应的真实节点ID
+            u = idx[i]
+            v = idx[j]
+            # 判断是否为真实邻居
+            edge_tuple = (min(u, v), max(u, v))
+            if edge_tuple in edge_set:
+                neighbor_scores.append(score_agg[i][j])
+    # 转换为numpy数组（方便后续计算）
+    neighbor_scores = np.array(neighbor_scores)
+    plt.figure(figsize=(10, 6))
+    n_bins = 50
+    counts, bins, patches = plt.hist(
+        neighbor_scores,
+        bins=n_bins,
+        alpha=0.8,
+        edgecolor="black",
+        color="#1f77b4"
+    )
+    # plt.xlim(0, 200)
+    plt.title(f"邻居注意力分数分布直方图 (n={score_agg.size})", fontsize=14, fontweight="bold")
+    plt.xlabel("注意力分数值", fontsize=12)
+    plt.ylabel("频数（像素/元素个数）", fontsize=12)
+    plt.tight_layout()
+    fig_full_path = os.path.join(vis_dir,"neighbor_score_hist",f"attention_histogram_{epoch}.png")
+    if not os.path.exists(f"./{vis_dir}/neighbor_score_hist"):
+        os.makedirs(f"./{vis_dir}/neighbor_score_hist")
     plt.savefig(fig_full_path, dpi=300, bbox_inches="tight")
     plt.close()
     score_hist_flist.append(fig_full_path)
@@ -101,25 +147,58 @@ def neighbor(score_agg:np.ndarray,idx:np.ndarray,edge_index:np.ndarray,epoch:int
     # print(f"edge_index.shape:{edge_index.shape}")
     for u, v in edge_index.T:
         edge_set.add((min(u, v), max(u, v)))
+
+    # 步骤2：构建节点-邻居映射（核心：快速查询节点的邻居数）
+    node_neighbors = {}  # key: 节点ID, value: 该节点的邻居集合
+    for u, v in edge_index.T:
+        if u not in node_neighbors:
+            node_neighbors[u] = set()
+        node_neighbors[u].add(v)
+        if v not in node_neighbors:
+            node_neighbors[v] = set()
+        node_neighbors[v].add(u)
+    # 补充孤立节点（邻居数为0）
+    all_nodes = set(idx) | set(edge_index.flatten())
+    for node in all_nodes:
+        if node not in node_neighbors:
+            node_neighbors[node] = set()
         
     score_neighbor_ratio_epoch = []
+    score_neighbor_ratio_in_neighbor_epoch = []
+    high_attn_node_neighbor_count_epoch = []  # 单epoch下各阈值的邻居的邻居数
     for k,th in enumerate(thresh_holds):
         score_per_n = score_agg>th
         score_cnt = np.sum(score_per_n)
         score_neighbor_cnt = 0
+        neighbor_cnt = 0
+        high_attn_neighbor_total = 0  # 高分节点对的邻居的邻居总数
+        high_attn_node_pair_set = set()  # 避免重复统计同一节点对
         for i in range(score_agg.shape[0]):
             for j in range(score_agg.shape[1]):
-                if i != j and score_per_n[i][j]:
-                    # 获取对应的节点索引
-                    u = idx[i]
-                    v = idx[j]
-                    # 检查是否在边集合中（O(1)查询）
-                    edge_tuple = (min(u, v), max(u, v))
-                    # print(f"edge_tuple:{edge_tuple}")
-                    if edge_tuple in edge_set:
+                # 获取对应的节点索引
+                u = idx[i]
+                v = idx[j]
+                # 检查是否在边集合中（O(1)查询
+                edge_tuple = (min(u, v), max(u, v))
+                if i != j and edge_tuple in edge_set:
+                    neighbor_cnt += 1
+                    # if high attn and neighbor
+                    if score_per_n[i][j]:
                         score_neighbor_cnt += 1
+                # 新增：统计高分节点对的邻居的邻居数（去重）
+                if i != j and score_per_n[i][j] and edge_tuple not in high_attn_node_pair_set:
+                    high_attn_node_pair_set.add(edge_tuple)
+                    # u的邻居数 + v的邻居数
+                    u_neighbor_num = len(node_neighbors[u])
+                    # v_neighbor_num = len(node_neighbors[v])
+                    high_attn_neighbor_total += u_neighbor_num
+                    # high_attn_neighbor_total += (u_neighbor_num + v_neighbor_num)
+        high_attn_node_neighbor_count_epoch.append(high_attn_neighbor_total)
         score_neighbor_ratio_epoch.append(score_neighbor_cnt/score_cnt)
+        score_neighbor_ratio_in_neighbor_epoch.append(score_neighbor_cnt/neighbor_cnt)
     score_neighbor_ratio_list.append(score_neighbor_ratio_epoch)
+    score_neighbor_ratio_in_neighbor_list.append(score_neighbor_ratio_in_neighbor_epoch)
+    high_attn_node_neighbor_neighbor_num.append(high_attn_node_neighbor_count_epoch)
     
 def high_score_neighbor(score_agg:np.ndarray,idx:np.ndarray,edge_index:np.ndarray,epoch:int):
     # 1. 转NetworkX图（无向）
@@ -145,8 +224,8 @@ def relativity(score_agg:np.ndarray,idx:np.ndarray,edge_index:np.ndarray,epoch:i
     score_relativity_ratio_list.append(score_relativity_ratio_epoch)
 
 def high_attn_node_plot():
-    if not os.path.exists("./vis/node_attned"):
-        os.mkdir("./vis/node_attned")
+    if not os.path.exists(f"./{vis_dir}/node_attned"):
+        os.makedirs(f"./{vis_dir}/node_attned")
     plt.figure(figsize=(10, 6))
     for peridx,pern in enumerate(pers):
         high_attn_flist = []
@@ -163,13 +242,13 @@ def high_attn_node_plot():
             plt.xlabel("比例值", fontsize=12)
             plt.ylabel("频数", fontsize=12)
             plt.tight_layout()
-            fig_full_path = os.path.join("vis","node_attned",f"per_{pern}",f"attned_per{pern}_{e}.png")
-            if not os.path.exists(f"./vis/node_attned/per_{pern}"):
-                os.mkdir(f"./vis/node_attned/per_{pern}")
+            fig_full_path = os.path.join(vis_dir,"node_attned",f"per_{pern}",f"attned_per{pern}_{e}.png")
+            if not os.path.exists(f"./{vis_dir}/node_attned/per_{pern}"):
+                os.makedirs(f"./{vis_dir}/node_attned/per_{pern}")
             plt.savefig(fig_full_path, dpi=300, bbox_inches="tight")
             plt.close()
             high_attn_flist.append(fig_full_path)
-        pics_to_gif(high_attn_flist,f"./vis/high_attn_pern{pern}.gif")
+        pics_to_gif(high_attn_flist,f"./{vis_dir}/high_attn_pern{pern}.gif")
 
 def high_attn_node(score_agg:np.ndarray,idx:np.ndarray,edge_index:np.ndarray,epoch:int):
     score_flat=score_agg.flatten()
@@ -225,9 +304,9 @@ def distance(score_agg:np.ndarray,idx:np.ndarray,edge_index:np.ndarray,epoch:int
         plt.ylabel("频数", fontsize=12)
         plt.grid(axis="y", linestyle="--", alpha=0.5)
         plt.tight_layout()
-        if not os.path.exists(f"./vis/dis/per{pers[k]}/"):
-            os.makedirs(f"./vis/dis/per{pers[k]}/")
-        fig_full_path = os.path.join("vis","dis",f"per{pers[k]}",f"distance_epoch{epoch}.jpg")
+        if not os.path.exists(f"./{vis_dir}/dis/per{pers[k]}/"):
+            os.makedirs(f"./{vis_dir}/dis/per{pers[k]}/")
+        fig_full_path = os.path.join(vis_dir,"dis",f"per{pers[k]}",f"distance_epoch{epoch}.jpg")
         plt.savefig(fig_full_path, dpi=300, bbox_inches="tight")
         plt.close()
 
@@ -258,7 +337,7 @@ def acc_plot(x,y,fig_name):
     ax.tick_params(axis='x', rotation=45)
     ax.set_xticks(epochs)
     plt.tight_layout()
-    plt.savefig(f'acc_by_epoch.png', dpi=300, bbox_inches='tight')
+    plt.savefig(f'{vis_dir}/acc_by_epoch.png', dpi=300, bbox_inches='tight')
     plt.close()
 
 def homo_node_mask(edge_index, idx_i, mask_ratio=0.5):
@@ -293,10 +372,11 @@ def vis_interface(score_agg,score_spe,idx,edge_index,epoch):
     score_spe=score_spe.cpu().detach().numpy() if isinstance(score_spe,torch.Tensor) else score_spe
     idx = idx.cpu().detach().numpy() if isinstance(idx,torch.Tensor) else idx
     edge_index=edge_index.cpu().detach().numpy() if isinstance(edge_index,torch.Tensor) else edge_index
-    if not os.path.exists("vis"):
-        os.mkdir("vis")
+    if not os.path.exists(vis_dir):
+        os.makedirs(vis_dir)
     high_attn(score_agg,score_spe,epoch)
+    neighbor_high_attn(score_agg,score_spe,edge_index,idx,epoch)
     neighbor(score_agg,idx,edge_index,epoch)
     relativity(score_agg,idx,edge_index,epoch)
     high_attn_node(score_agg,idx,edge_index,epoch)
-    distance(score_agg,idx,edge_index,epoch)
+    # distance(score_agg,idx,edge_index,epoch)

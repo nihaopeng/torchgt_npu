@@ -36,6 +36,8 @@ def main():
     parser = argparse.ArgumentParser(description='TorchGT node-level training arguments.')
     parser_add_main_args(parser)
     args = parser.parse_args()
+
+    vis.vis_dir = args.vis_dir
    
     # Initialize distributed 
     initialize_distributed(args)
@@ -279,12 +281,15 @@ def main():
              
             iter_t_list.append(t2 - t1)
             if epoch % 20 ==0 and i==0:
+                vis.epochs.append(epoch)
                 vis_interface(score_agg,score_spe,idx_i,edge_index,epoch)
             if epoch == args.epochs-1:
             # if epoch == 61:
                 # pics_to_gif(vis.score_hist_flist,"./vis/score_var.gif")
-                vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,"./vis/高注意力邻居占比")
-                vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,"./vis/高注意力相对应比例")
+                vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,f"./{vis.vis_dir}/高注意力邻居占比")
+                vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_in_neighbor_list).T,f"./{vis.vis_dir}/高注意力邻居在邻居中的占比")
+                vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,f"./{vis.vis_dir}/高注意力相对应比例")
+                vis.plot(vis.epochs,np.array(vis.high_attn_node_neighbor_neighbor_num).T,f"./{vis.vis_dir}/被注意节点的邻居数")
                 high_attn_node_plot()
                 vis.acc_plot(vis.epochs,[vis.train_acc,vis.test_acc,vis.val_acc],["train_acc","test_acc","val_acc"])
     

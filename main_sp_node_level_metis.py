@@ -22,14 +22,16 @@ from gt_sp.initialize import (
 )
 from gt_sp.reducer import sync_params_and_buffers, Reducer
 from gt_sp.evaluate import sparse_eval_gpu
-from gt_sp.utils import random_split_idx, get_batch_reorder_blockize, check_conditions
+from gt_sp.utils import compute_graphormer_data, get_node_degrees, random_split_idx, get_batch_reorder_blockize, check_conditions
 from utils.parser_node_level import parser_add_main_args
 from collections import deque
 from core.metisPartition import PartitionTree
 from utils.vis import pics_to_gif, vis_interface,high_attn_node_plot
 import utils.vis as vis
+import utils.logger as logger
 
 def main():
+    logger.IS_LOGGING = False
     parser = argparse.ArgumentParser(description='TorchGT node-level training arguments.')
     parser_add_main_args(parser)
     args = parser.parse_args()
@@ -53,6 +55,16 @@ def main():
     y = torch.load(args.dataset_dir + args.dataset + '/y.pt') # [N]
     edge_index = torch.load(args.dataset_dir + args.dataset + '/edge_index.pt') # [2, num_edges]
     N = feature.shape[0]
+
+    # ===== 计算centrality encoding =====
+    graph_in_degree, graph_out_degree = get_node_degrees(edge_index, N)
+    # ==================================
+
+    # =====    attention bias     =====
+    print("图空间结构预处理计算中...")
+    global_spatial_pos, global_edge_input = compute_graphormer_data(edge_index, N, max_dist=args.max_dist)
+    print("预处理完成")
+    # ================================== 
 
     if args.dataset == 'pokec':
         y = torch.clamp(y, min=0) 
@@ -132,7 +144,14 @@ def main():
             input_dropout_rate=args.input_dropout_rate,
             attention_dropout_rate=args.attention_dropout_rate,
             ffn_dim=args.ffn_dim,
-            num_global_node=args.num_global_node
+            num_global_node=args.num_global_node,
+            args=args,
+            num_in_degree = 512,
+            num_out_degree = 512,
+            num_spatial=512,
+            num_edges=1024,
+            max_dist=args.max_dist,
+            edge_dim=64
         ).to(device)
         
     if args.rank == 0:
@@ -180,11 +199,29 @@ def main():
             attn_type = "full"
             
             t1 = time.time()
-            # out_i,score = model(x_i, attn_bias, edge_index_i, attn_type=attn_type)
-            out_i,score_agg,score_spe = model(metis_partition_feature[i].to(device), None, None, attn_type=attn_type)
+            idx_i = metis_partition_parts[i]
+            x_i = metis_partition_feature[i].to(device)
+            attn_bias = None
+            edge_index_i = None
+            mask = None
+
+            # == node degree in the sequnence ==
+            in_degree = graph_in_degree[idx_i].to(device)
+            out_degree = graph_out_degree[idx_i].to(device)
+            # == ========================  == 
+            
+            # == spatial and edge info in the sequence ==
+                # spatial_pos 切片: [Batch, Batch]
+            spatial_pos_i = global_spatial_pos[idx_i.to("cpu")][:, idx_i.to("cpu")].to(device)
+            
+                # edge_input 切片: [Batch, Batch, Max_Dist]
+            edge_input_i = global_edge_input[idx_i.to("cpu")][:, idx_i.to("cpu"), :].to(device)
+            # =================================================
+
+
+            out_i,score_agg,score_spe = model(x_i, attn_bias, edge_index_i,in_degree,out_degree, spatial_pos_i,edge_input_i,attn_type=attn_type,mask=mask)
             scores.append(score_agg)
-            # print(f"out_i:{out_i.shape},y[metis_partition_parts[i]]:{y[metis_partition_parts[i]].shape}")
-            # print(f"edge_index shape:{edge_index.cpu().numpy().shape}")
+
             loss = F.nll_loss(out_i, y[metis_partition_parts[i]].to(device).long())
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
@@ -196,19 +233,19 @@ def main():
                         param.grad.div_(get_sequence_parallel_world_size())
                         dist.all_reduce(param.grad, op=dist.ReduceOp.SUM, group=get_sequence_parallel_group())
 
-            optimizer.step()  
-            # torch.cuda.synchronize()   
-            t2 = time.time() 
+            optimizer.step()
+            t2 = time.time()
              
             iter_t_list.append(t2 - t1)
         if epoch % 20 ==0 and i==0:
             vis.epochs.append(epoch)
-            # vis_interface(score_agg,score_spe,metis_partition_nodes[i].node_ids,edge_index,epoch)
+            vis_interface(score_agg,score_spe,metis_partition_nodes[i].node_ids,edge_index,epoch)
         if epoch == args.epochs-1:
-            # pics_to_gif(vis.score_hist_flist,"./vis/score_var.gif")
-            # vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,"./vis/高注意力邻居占比")
-            # vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,"./vis/高注意力相对应比例")
-            # high_attn_node_plot()
+            pics_to_gif(vis.score_hist_flist,"./vis/score_var.gif")
+            vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,"./vis/高注意力邻居占比")
+            vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_in_neighbor_list).T,"./vis/高注意力邻居在邻居中的占比")
+            vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,"./vis/高注意力相对应比例")
+            high_attn_node_plot()
             vis.acc_plot(vis.epochs,[vis.train_acc,vis.test_acc,vis.val_acc],["train_acc","test_acc","val_acc"])
      
         loss_list.append(loss.item()) 
@@ -235,9 +272,9 @@ def main():
 
         if args.rank == 0 and epoch % 5 == 0:   
             t4 = time.time()
-            train_acc = sparse_eval_gpu(args, model, feature, y, split_idx['train'], None, edge_index, device)
-            val_acc = sparse_eval_gpu(args, model, feature, y, split_idx['valid'], None, edge_index, device)
-            test_acc = sparse_eval_gpu(args, model, feature, y, split_idx['test'], None, edge_index, device)
+            train_acc = sparse_eval_gpu(args, model, feature, y, split_idx['train'], attn_bias, edge_index, device,graph_in_degree, graph_out_degree,global_spatial_pos,global_edge_input) 
+            val_acc = sparse_eval_gpu(args, model, feature, y, split_idx['valid'], attn_bias, edge_index, device,graph_in_degree, graph_out_degree,global_spatial_pos,global_edge_input)
+            test_acc = sparse_eval_gpu(args, model, feature, y, split_idx['test'], attn_bias, edge_index, device,graph_in_degree, graph_out_degree,global_spatial_pos,global_edge_input)
             if epoch % 20 ==0 and i==0:
                 vis.train_acc.append(train_acc)
                 vis.val_acc.append(val_acc)
