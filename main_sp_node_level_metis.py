@@ -202,7 +202,8 @@ def main():
              
             iter_t_list.append(t2 - t1)
         if epoch % 20 ==0 and i==0:
-            vis_interface(score_agg,score_spe,metis_partition_nodes[i].node_ids,edge_index,epoch)
+            vis.epochs.append(epoch)
+            # vis_interface(score_agg,score_spe,metis_partition_nodes[i].node_ids,edge_index,epoch)
         if epoch == args.epochs-1:
             # pics_to_gif(vis.score_hist_flist,"./vis/score_var.gif")
             # vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,"./vis/高注意力邻居占比")
@@ -215,9 +216,9 @@ def main():
         
         # 窗口调整
         # =================================================================
-        # if (epoch+1) % 20 == 0:
-        #     # print(f"score:{scores[0]}")
-        #     partitionTree.dynamic_window_build(scores,metis_partition_nodes)
+        if (epoch+1) % 20 == 0:
+            # print(f"score:{scores[0]}")
+            partitionTree.dynamic_window_build(scores,metis_partition_nodes,remove_ratio=0.05)
         # =================================================================
         
         csv_content = []

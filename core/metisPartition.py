@@ -107,7 +107,7 @@ class PartitionTree:
         dfs(self.root)
         return final_parts, final_features, final_nodes
 
-    def dynamic_windows_globalReassign(self, scores_partitions, nodes, remove_ratio=0.1):
+    def dynamic_windows_globalReassign(self, scores_partitions, nodes,*args,**kwargs):
         """
         全局淘汰池：收集所有分区的淘汰节点，再重新分配到各个窗口
         不返回任何值，直接更新树结构
@@ -121,7 +121,7 @@ class PartitionTree:
             part_nodes = part_nodes[torch.isin(part_nodes, self.train_idx)]
             log(f"score shape:{scores.shape}")
             row_sums = scores.abs().sum(dim=1)
-            k = int(remove_ratio * len(row_sums))
+            k = int(kwargs["remove_ratio"] * len(row_sums))
             _, indices = torch.topk(row_sums, k, largest=False)
             keep_mask = torch.ones_like(row_sums, dtype=torch.bool).to(part_nodes.device)
             keep_mask[indices] = False
@@ -177,7 +177,7 @@ class PartitionTree:
         # 递归更新上级父节点
         self._update_parent(parent_node.parent)
 
-    def dynamic_windows_metisParent(self,scores_partitions, nodes):
+    def dynamic_windows_metisParent(self,scores_partitions, nodes,*args,**kwargs):
         """
         使用metis分区，查询父分区进行重构
         """
@@ -200,16 +200,16 @@ class PartitionTree:
 
         return new_partitions
 
-    def dynamic_window_build(self, scores_partitions, nodes, mode="globalReassign"):
+    def dynamic_window_build(self, scores_partitions, nodes, mode="globalReassign",*args,**kwargs):
         """
         scores_partitions:
         nodes:
         动态窗口更新: 从父分区中寻找被踢出的节点，重新分配到合适窗口
         """
         if mode=="metisParents":
-            return self.dynamic_windows_metisParent(scores_partitions,nodes)
+            return self.dynamic_windows_metisParent(scores_partitions,nodes,*args,**kwargs)
         elif mode=="globalReassign":
-            return self.dynamic_windows_globalReassign(scores_partitions,nodes)
+            return self.dynamic_windows_globalReassign(scores_partitions,nodes,*args,**kwargs)
 
 if __name__=="__main__":
     import os

@@ -293,11 +293,10 @@ def vis_interface(score_agg,score_spe,idx,edge_index,epoch):
     score_spe=score_spe.cpu().detach().numpy() if isinstance(score_spe,torch.Tensor) else score_spe
     idx = idx.cpu().detach().numpy() if isinstance(idx,torch.Tensor) else idx
     edge_index=edge_index.cpu().detach().numpy() if isinstance(edge_index,torch.Tensor) else edge_index
-    epochs.append(epoch)
     if not os.path.exists("vis"):
         os.mkdir("vis")
     high_attn(score_agg,score_spe,epoch)
     neighbor(score_agg,idx,edge_index,epoch)
     relativity(score_agg,idx,edge_index,epoch)
     high_attn_node(score_agg,idx,edge_index,epoch)
-    # distance(score_agg,idx,edge_index,epoch)
+    distance(score_agg,idx,edge_index,epoch)
