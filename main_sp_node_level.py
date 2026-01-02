@@ -28,7 +28,7 @@ from gt_sp.utils import random_split_idx, get_batch_reorder_blockize, check_cond
 from utils.parser_node_level import parser_add_main_args
 from collections import deque
 
-from utils.vis import high_attn_node_plot, vis_interface,pics_to_gif
+from utils.vis import vis_interface
 import utils.vis as vis
 
 def main():
@@ -263,7 +263,7 @@ def main():
             log(f"x shape:{x_i.shape}")
             log(f"rank:{args.rank},i:{i},x:{x_i}")
             out_i,score_agg,score_spe = model(x_i, attn_bias, edge_index_i,in_degree,out_degree, spatial_pos_i,edge_input_i,attn_type=attn_type,mask=mask)
-            
+            # print(f"out_i:{out_i.shape}")
             loss = F.nll_loss(out_i, y_i.long())
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
@@ -278,20 +278,10 @@ def main():
             optimizer.step()  
             torch.cuda.synchronize()   
             t2 = time.time() 
-             
+            
             iter_t_list.append(t2 - t1)
-            if epoch % 20 ==0 and i==0:
-                vis.epochs.append(epoch)
-                vis_interface(score_agg,score_spe,idx_i,edge_index,epoch)
-            if epoch == args.epochs-1:
-            # if epoch == 61:
-                # pics_to_gif(vis.score_hist_flist,"./vis/score_var.gif")
-                vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,f"./{vis.vis_dir}/高注意力邻居占比")
-                vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_in_neighbor_list).T,f"./{vis.vis_dir}/高注意力邻居在邻居中的占比")
-                vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,f"./{vis.vis_dir}/高注意力相对应比例")
-                vis.plot(vis.epochs,np.array(vis.high_attn_node_neighbor_neighbor_num).T,f"./{vis.vis_dir}/被注意节点的邻居数")
-                high_attn_node_plot()
-                vis.acc_plot(vis.epochs,[vis.train_acc,vis.test_acc,vis.val_acc],["train_acc","test_acc","val_acc"])
+            if i==0:
+                vis_interface(score_agg,idx_i,edge_index,epoch,args)
     
         loss_list.append(loss.item())
         lr_scheduler.step()

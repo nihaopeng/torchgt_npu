@@ -67,6 +67,7 @@ def get_dataset(dataset_name):
     #     normalized_adj = sp.load_npz(dataset_dir + dataset_name + '/normalized_adj.npz')
     #     column_normalized_adj = sp.load_npz(dataset_dir + dataset_name + '/column_normalized_adj.npz')
     # else: 
+    # data_x = None
     if True:
         if dataset_name in ['cora', 'citeseer', 'pubmed']: 
             dataset = Planetoid(root=dataset_dir, name=dataset_name)       
@@ -261,6 +262,7 @@ def get_dataset(dataset_name):
         # sp.save_npz(dataset_dir + dataset_name + '/adj.npz', adj)
         # sp.save_npz(dataset_dir + dataset_name + '/normalized_adj.npz', normalized_adj)
         dataset_dir = './dataset/'
+        print(f"data x shape:{data_x.shape}")
         torch.save(data_x, dataset_dir + dataset_name + '/x.pt')
         torch.save(data_y, dataset_dir + dataset_name + '/y.pt')
         torch.save(edge_index, dataset_dir + dataset_name + '/edge_index.pt')

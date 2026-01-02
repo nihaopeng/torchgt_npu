@@ -26,7 +26,7 @@ from gt_sp.utils import compute_graphormer_data, get_node_degrees, random_split_
 from utils.parser_node_level import parser_add_main_args
 from collections import deque
 from core.metisPartition import PartitionTree
-from utils.vis import pics_to_gif, vis_interface,high_attn_node_plot
+from utils.vis import vis_interface
 import utils.vis as vis
 import utils.logger as logger
 
@@ -237,24 +237,15 @@ def main():
             t2 = time.time()
              
             iter_t_list.append(t2 - t1)
-        if epoch % 20 ==0 and i==0:
-            vis.epochs.append(epoch)
-            vis_interface(score_agg,score_spe,metis_partition_nodes[i].node_ids,edge_index,epoch)
-        if epoch == args.epochs-1:
-            pics_to_gif(vis.score_hist_flist,"./vis/score_var.gif")
-            vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_list).T,"./vis/高注意力邻居占比")
-            vis.plot(vis.epochs,np.array(vis.score_neighbor_ratio_in_neighbor_list).T,"./vis/高注意力邻居在邻居中的占比")
-            vis.plot(vis.epochs,np.array(vis.score_relativity_ratio_list).T,"./vis/高注意力相对应比例")
-            high_attn_node_plot()
-            vis.acc_plot(vis.epochs,[vis.train_acc,vis.test_acc,vis.val_acc],["train_acc","test_acc","val_acc"])
-     
+            if epoch % 20 ==0 and i==0:
+                vis_interface(score_agg,score_spe,idx_i,edge_index,epoch,args)
+            
         loss_list.append(loss.item()) 
         lr_scheduler.step()
         
         # 窗口调整
         # =================================================================
         if (epoch+1) % 20 == 0:
-            # print(f"score:{scores[0]}")
             partitionTree.dynamic_window_build(scores,metis_partition_nodes,remove_ratio=0.05)
         # =================================================================
         
