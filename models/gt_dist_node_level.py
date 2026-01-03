@@ -27,7 +27,6 @@ def init_params(module, n_layers):
     if isinstance(module, nn.Embedding):
         module.weight.data.normal_(mean=0.0, std=0.02)
         
-
 class CoreAttention(nn.Module):
     """
     Core attn 
@@ -263,7 +262,7 @@ class MultiHeadAttention(nn.Module):
         # [b, seq_len, h]
         log(f"x shape:{x.shape}")
         assert x.size() == orig_q_size
-        return x,torch.sum(score, dim=1).squeeze(0)# 对分数的绝对值求和，考虑正负数都起作用
+        return x,score# 对分数的绝对值求和，考虑正负数都起作用
 
 
 class EncoderLayer(nn.Module):
@@ -567,7 +566,7 @@ class GT(nn.Module):
                 attn_type=attn_type,
                 mask=mask
             )
-            score_agg = score if score_agg==None else score_agg+score # 返回的score已经是绝对值了
+            score_agg = score if score_agg==None else score_agg+torch.sum(score,dim=1).squeeze(0) # 返回的score已经是绝对值了
             score_spe.append(score)
         # Output part
         log(f"final output:{output.shape}")

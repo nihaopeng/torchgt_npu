@@ -263,7 +263,7 @@ def main():
             log(f"x shape:{x_i.shape}")
             log(f"rank:{args.rank},i:{i},x:{x_i}")
             out_i,score_agg,score_spe = model(x_i, attn_bias, edge_index_i,in_degree,out_degree, spatial_pos_i,edge_input_i,attn_type=attn_type,mask=mask)
-            # print(f"out_i:{out_i.shape}")
+            print(f"score:{score_spe[3].shape}")
             loss = F.nll_loss(out_i, y_i.long())
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
