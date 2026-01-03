@@ -3,8 +3,8 @@
 # nohup bash run.sh origin 1 cora True 7 './exps/cora_max_dist_7' 8081 > cora_max_dist_7.log 2>&1 &
 # nohup bash run.sh origin 2 citeseer True 5 './exps/citeseer_max_dist_5' 8082 > citeseer_max_dist_5.log 2>&1 &
 # nohup bash run.sh origin 3 citeseer True 7 './exps/citeseer_max_dist_7' 8083 > citeseer_max_dist_7.log 2>&1 &
-nohup bash run.sh origin 0 pubmed True 5 './exps/pubmed_max_dist_5' 8082 > pubmed_max_dist_5.log 2>&1 &
-nohup bash run.sh origin 1 pubmed True 7 './exps/pubmed_max_dist_7' 8083 > pubmed_max_dist_7.log 2>&1 &
+# nohup bash run.sh origin 0 pubmed True 5 './exps/pubmed_max_dist_5' 8082 > pubmed_max_dist_5.log 2>&1 &
+# nohup bash run.sh origin 1 pubmed True 7 './exps/pubmed_max_dist_7' 8083 > pubmed_max_dist_7.log 2>&1 &
 
 # nohup bash run.sh metis 1 cora True 7 './exps/cora_max_dist_7' 8010 > metis_cora_max_dist_7_enc.log 2>&1 &
 # nohup bash run.sh metis 2 cora False 7 './exps/cora_max_dist_7' 8011 > metis_cora_max_dist_7_.log 2>&1 &

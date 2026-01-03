@@ -263,7 +263,7 @@ def main():
             log(f"x shape:{x_i.shape}")
             log(f"rank:{args.rank},i:{i},x:{x_i}")
             out_i,score_agg,score_spe = model(x_i, attn_bias, edge_index_i,in_degree,out_degree, spatial_pos_i,edge_input_i,attn_type=attn_type,mask=mask)
-            print(f"score:{score_spe[3].shape}")
+            # print(f"score:{score_spe[3].shape}")
             loss = F.nll_loss(out_i, y_i.long())
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
@@ -281,7 +281,8 @@ def main():
             
             iter_t_list.append(t2 - t1)
             if i==0:
-                vis_interface(score_agg,idx_i,edge_index,epoch,args)
+                # vis_interface(score_agg,idx_i,edge_index,epoch,args)
+                vis_interface(score_spe[3].squeeze(0)[0],idx_i,edge_index,epoch,args)
     
         loss_list.append(loss.item())
         lr_scheduler.step()

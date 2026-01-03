@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image
 import os
 import networkx as nx
+from tqdm import tqdm
 
 from utils.logger import log
 
@@ -174,7 +175,7 @@ def neighbor(score_matri:np.ndarray,idx:np.ndarray,edge_index:np.ndarray,epoch:i
     score_neighbor_ratio_in_neighbor_epoch = []
     high_attn_node_neighbor_count_epoch = []  # 单epoch下各阈值的邻居的邻居数
     all_neighbor_cnt = len(edge_set) * 2
-    for k,th in enumerate(thresh_holds):
+    for k,th in tqdm(enumerate(thresh_holds),desc="neighbor"):
         score_per_n = score_matri>th
         score_cnt = np.sum(score_per_n)
         score_neighbor_cnt = 0
@@ -258,7 +259,7 @@ def distance(score_matri:np.ndarray,idx:np.ndarray,edge_index:np.ndarray,epoch:i
 
     score_flat=score_matri.flatten()
     thresh_holds=np.percentile(score_flat,pers)
-    for k,th in enumerate(thresh_holds):
+    for k,th in tqdm(enumerate(thresh_holds),desc="distance"):
         score_per_n = score_matri > th
         high_attention_indices = np.argwhere(score_per_n)
         distances = []
@@ -287,7 +288,7 @@ def mean_score_of_distance(score_matri:np.ndarray,idx:np.ndarray,edge_index:np.n
     sub_nodes_num = len(idx)
     score_of_dis = {}
     score_of_dis_cnt = {}
-    for i in range(sub_nodes_num):
+    for i in tqdm(range(sub_nodes_num),desc="mean_score_of_distance"):
         for j in range(sub_nodes_num):
             try:
                 # 计算节点对的最短路径长度
@@ -346,18 +347,18 @@ def vis_interface(score_matri,idx,edge_index,epoch,args):
         if not os.path.exists(vis_dir):
             os.makedirs(vis_dir)
         high_attn(score_matri,epoch)
-        neighbor_high_attn(score_matri,edge_index,idx,epoch)
-        neighbor(score_matri,idx,edge_index,epoch)
-        relativity(score_matri,idx,edge_index,epoch)
-        high_attn_node(score_matri,idx,edge_index,epoch)
+        # neighbor_high_attn(score_matri,edge_index,idx,epoch)
+        # neighbor(score_matri,idx,edge_index,epoch)
+        # relativity(score_matri,idx,edge_index,epoch)
+        # high_attn_node(score_matri,idx,edge_index,epoch)
         # distance(score_matri,idx,edge_index,epoch)
         mean_score_of_distance(score_matri,idx,edge_index,epoch)
         epochs.append(epoch)
-    if epoch == args.epochs-1:
-        # pics_to_gif(score_hist_flist,"./vis/score_var.gif")
-        labels = [f"{p} %分位数" for p in pers]
-        plot(epochs,np.array(score_neighbor_ratio_list).T,labels,vis_dir,"高注意力邻居占比","高注意力邻居占比.png")
-        plot(epochs,np.array(high_attn_node_neighbor_neighbor_num).T,labels,vis_dir,"被高注意节点邻居数均值","被高注意节点邻居数均值.png")
-        plot(epochs,np.array(score_neighbor_ratio_in_neighbor_list).T,labels,vis_dir,"邻居中高注意力邻居占比","邻居中高注意力邻居占比.png")
-        plot(epochs,np.array(score_relativity_ratio_list).T,labels,vis_dir,"高注意力相对性占比","高注意力相对性占比.png")
-        plot(epochs,[train_acc,test_acc,val_acc],["train_acc","test_acc","val_acc"],vis_dir,"准确率","acc_epochs.png")
+    # if epoch == args.epochs-1:
+    #     # pics_to_gif(score_hist_flist,"./vis/score_var.gif")
+    #     labels = [f"{p} %分位数" for p in pers]
+    #     plot(epochs,np.array(score_neighbor_ratio_list).T,labels,vis_dir,"高注意力邻居占比","高注意力邻居占比.png")
+    #     plot(epochs,np.array(high_attn_node_neighbor_neighbor_num).T,labels,vis_dir,"被高注意节点邻居数均值","被高注意节点邻居数均值.png")
+    #     plot(epochs,np.array(score_neighbor_ratio_in_neighbor_list).T,labels,vis_dir,"邻居中高注意力邻居占比","邻居中高注意力邻居占比.png")
+    #     plot(epochs,np.array(score_relativity_ratio_list).T,labels,vis_dir,"高注意力相对性占比","高注意力相对性占比.png")
+    #     plot(epochs,[train_acc,test_acc,val_acc],["train_acc","test_acc","val_acc"],vis_dir,"准确率","acc_epochs.png")
