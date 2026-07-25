@@ -79,7 +79,7 @@ PPR_TOPK=5
 PPR_ALPHA=0.85
 PPR_NUM_ITER=10
 PPR_BATCH_SIZE=2048
-PPR_ITER_TOPK=64
+PPR_ITER_TOPK=32
 USE_CACHE=1
 USE_PREPROCESS_CACHE=1
 TIMEOUT=640
@@ -98,7 +98,7 @@ for MODEL_ALIAS in "${MODELS[@]}"; do
         "GT")
             MODEL="gt_sw"
             N_LAYERS=4; HIDDEN_DIM=128; FFN_DIM=128; NUM_HEADS=8
-            NPARTS=1600
+            NPARTS=1200
             WINDOW_EXTRA_RATIO=0.10
             WINDOW_RELATED_RATIO=0.05
             WINDOW_HUB_RATIO=0.05
@@ -106,7 +106,7 @@ for MODEL_ALIAS in "${MODELS[@]}"; do
         "GPH_Slim")
             MODEL="graphormer"
             N_LAYERS=4; HIDDEN_DIM=64; FFN_DIM=64; NUM_HEADS=8
-            NPARTS=1600
+            NPARTS=1200
             WINDOW_EXTRA_RATIO=0.10
             WINDOW_RELATED_RATIO=0.05
             WINDOW_HUB_RATIO=0.05
@@ -114,7 +114,7 @@ for MODEL_ALIAS in "${MODELS[@]}"; do
         "GPH_Large")
             MODEL="graphormer"
             N_LAYERS=12; HIDDEN_DIM=768; FFN_DIM=768; NUM_HEADS=32
-            NPARTS=4096
+            NPARTS=3072
             WINDOW_EXTRA_RATIO=0.10
             WINDOW_RELATED_RATIO=0.05
             WINDOW_HUB_RATIO=0.05

@@ -85,7 +85,7 @@ RUN_TAG=$(date +%Y%m%d_%H%M)
 EPOCHS=500
 ATTN_TYPE="sparse"
 USE_CACHE=1
-USE_PREPROCESS_CACHE=0
+USE_PREPROCESS_CACHE=1
 TIMEOUT=120
 PPR_BATCH_SIZE=8192
 PPR_ITER_TOPK=5
@@ -139,7 +139,7 @@ resolve_window_params() {
         fi
     elif [ "$dataset" = "reddit" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "96 0.15 0.075 0.075"
+            echo "160 0.10 0.05 0.05"
         else
             echo "48 0.15 0.075 0.075"
         fi

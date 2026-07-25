@@ -90,10 +90,10 @@ elif [ "$dataset" = "ogbn-products" ]; then
     WINDOW_RELATED_RATIO=0.05
     WINDOW_HUB_RATIO=0.05
 elif [ "$dataset" = "reddit" ]; then
-    NPARTS=96
-    WINDOW_EXTRA_RATIO=0.15
-    WINDOW_RELATED_RATIO=0.075
-    WINDOW_HUB_RATIO=0.075
+    NPARTS=160
+    WINDOW_EXTRA_RATIO=0.10
+    WINDOW_RELATED_RATIO=0.05
+    WINDOW_HUB_RATIO=0.05
 else
     echo "Error: unsupported dataset: $dataset" >&2
     exit 1

@@ -98,9 +98,9 @@ resolve_run_params() {
 
     if [ "$dataset" = "ogbn-papers100M" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "4096 40 2048 64 640 0.10 0.05 0.05"
+            echo "3072 40 2048 32 640 0.10 0.05 0.05"
         else
-            echo "1600 40 2048 64 640 0.10 0.05 0.05"
+            echo "1200 40 2048 32 640 0.10 0.05 0.05"
         fi
         return 0
     fi
@@ -125,7 +125,7 @@ resolve_run_params() {
         fi
     elif [ "$dataset" = "reddit" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "96 40 8192 5 120 0.15 0.075 0.075"
+            echo "160 40 8192 5 120 0.10 0.05 0.05"
         else
             echo "48 40 8192 5 120 0.15 0.075 0.075"
         fi
