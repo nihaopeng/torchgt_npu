@@ -98,36 +98,36 @@ resolve_run_params() {
 
     if [ "$dataset" = "ogbn-papers100M" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "3072 40 2048 32 640 0.10 0.05 0.05"
+            echo "3072 40 2048 32 640 0.10 0.075 0.025"
         else
-            echo "1200 40 2048 32 640 0.10 0.05 0.05"
+            echo "1200 40 2048 32 640 0.10 0.075 0.025"
         fi
         return 0
     fi
 
     if [ "$dataset" = "AmazonProducts" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "640 40 8192 5 120 0.10 0.05 0.05"
+            echo "640 40 8192 5 120 0.10 0.075 0.025"
         else
-            echo "256 40 8192 5 120 0.10 0.05 0.05"
+            echo "256 40 8192 5 120 0.10 0.075 0.025"
         fi
     elif [ "$dataset" = "ogbn-arxiv" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "32 40 8192 5 120 0.30 0.15 0.15"
+            echo "32 40 8192 5 120 0.30 0.22 0.08"
         else
-            echo "16 40 8192 5 120 0.30 0.15 0.15"
+            echo "16 40 8192 5 120 0.30 0.22 0.08"
         fi
     elif [ "$dataset" = "ogbn-products" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "1024 40 8192 5 120 0.10 0.05 0.05"
+            echo "1024 40 8192 5 120 0.10 0.075 0.025"
         else
-            echo "512 40 8192 5 120 0.10 0.05 0.05"
+            echo "512 40 8192 5 120 0.10 0.075 0.025"
         fi
     elif [ "$dataset" = "reddit" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "160 40 8192 5 120 0.10 0.05 0.05"
+            echo "160 40 8192 5 120 0.10 0.075 0.025"
         else
-            echo "48 40 8192 5 120 0.15 0.075 0.075"
+            echo "48 40 8192 5 120 0.15 0.11 0.04"
         fi
     else
         return 1
