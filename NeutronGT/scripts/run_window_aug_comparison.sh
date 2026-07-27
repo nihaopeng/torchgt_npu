@@ -121,9 +121,9 @@ resolve_window_params() {
     local model_alias="$2"
     if [ "$dataset" = "AmazonProducts" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "512 0.12 0.06 0.06"
+            echo "512 0.10 0.05 0.05"
         else
-            echo "192 0.25 0.125 0.125"
+            echo "224 0.20 0.10 0.10"
         fi
     elif [ "$dataset" = "ogbn-arxiv" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
@@ -133,15 +133,15 @@ resolve_window_params() {
         fi
     elif [ "$dataset" = "ogbn-products" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "768 0.12 0.06 0.06"
+            echo "768 0.10 0.05 0.05"
         else
-            echo "384 0.25 0.125 0.125"
+            echo "384 0.20 0.10 0.10"
         fi
     elif [ "$dataset" = "reddit" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "128 0.12 0.06 0.06"
+            echo "128 0.10 0.05 0.05"
         else
-            echo "32 0.30 0.15 0.15"
+            echo "32 0.20 0.10 0.10"
         fi
     else
         return 1

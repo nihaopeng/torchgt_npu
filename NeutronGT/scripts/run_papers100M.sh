@@ -99,25 +99,25 @@ for MODEL_ALIAS in "${MODELS[@]}"; do
             MODEL="gt_sw"
             N_LAYERS=4; HIDDEN_DIM=128; FFN_DIM=128; NUM_HEADS=8
             NPARTS=1000
-            WINDOW_EXTRA_RATIO=0.12
-            WINDOW_RELATED_RATIO=0.06
-            WINDOW_HUB_RATIO=0.06
+            WINDOW_EXTRA_RATIO=0.10
+            WINDOW_RELATED_RATIO=0.05
+            WINDOW_HUB_RATIO=0.05
             ;;
         "GPH_Slim")
             MODEL="graphormer"
             N_LAYERS=4; HIDDEN_DIM=64; FFN_DIM=64; NUM_HEADS=8
             NPARTS=1000
-            WINDOW_EXTRA_RATIO=0.12
-            WINDOW_RELATED_RATIO=0.06
-            WINDOW_HUB_RATIO=0.06
+            WINDOW_EXTRA_RATIO=0.10
+            WINDOW_RELATED_RATIO=0.05
+            WINDOW_HUB_RATIO=0.05
             ;;
         "GPH_Large")
             MODEL="graphormer"
             N_LAYERS=12; HIDDEN_DIM=768; FFN_DIM=768; NUM_HEADS=32
             NPARTS=2560
-            WINDOW_EXTRA_RATIO=0.12
-            WINDOW_RELATED_RATIO=0.06
-            WINDOW_HUB_RATIO=0.06
+            WINDOW_EXTRA_RATIO=0.10
+            WINDOW_RELATED_RATIO=0.05
+            WINDOW_HUB_RATIO=0.05
             ;;
     esac
 
