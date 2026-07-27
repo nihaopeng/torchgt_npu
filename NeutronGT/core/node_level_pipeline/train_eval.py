@@ -39,6 +39,16 @@ def _get_peak_memory_mb(device):
     return allocated_mb, reserved_mb
 
 
+def _get_current_memory_mb(device):
+    if not _supports_peak_memory_metrics(device):
+        return 0.0, 0.0, 0.0
+    device_index = _get_cuda_device_index(device)
+    allocated_mb = torch.cuda.memory_allocated(device_index) / (1024 ** 2)
+    reserved_mb = torch.cuda.memory_reserved(device_index) / (1024 ** 2)
+    total_mb = torch.cuda.get_device_properties(device_index).total_memory / (1024 ** 2)
+    return allocated_mb, reserved_mb, total_mb
+
+
 def build_zero_loss(model: torch.nn.Module, device: str):
     zero_loss = torch.zeros((), device=device)
     for param in model.parameters():
@@ -319,14 +329,31 @@ def train_epoch(args, model:torch.nn.Module, local_partition_ids, local_partitio
     lr_scheduler.step()
     sync_device(device)
     epoch_train_total_time = time.time() - epoch_train_start
+    local_current_allocated_mb, local_current_reserved_mb, local_total_mb = _get_current_memory_mb(device)
     local_peak_allocated_mb, local_peak_reserved_mb = _get_peak_memory_mb(device)
+    max_current_allocated_mb = local_current_allocated_mb
+    max_current_reserved_mb = local_current_reserved_mb
     max_peak_allocated_mb = local_peak_allocated_mb
     max_peak_reserved_mb = local_peak_reserved_mb
+    max_total_mb = local_total_mb
     if world_size > 1:
-        peak_tensor = torch.tensor([local_peak_allocated_mb, local_peak_reserved_mb], device=device, dtype=torch.float64)
-        dist.all_reduce(peak_tensor, op=dist.ReduceOp.MAX)
-        max_peak_allocated_mb = float(peak_tensor[0].item())
-        max_peak_reserved_mb = float(peak_tensor[1].item())
+        memory_tensor = torch.tensor(
+            [
+                local_current_allocated_mb,
+                local_current_reserved_mb,
+                local_peak_allocated_mb,
+                local_peak_reserved_mb,
+                local_total_mb,
+            ],
+            device=device,
+            dtype=torch.float64,
+        )
+        dist.all_reduce(memory_tensor, op=dist.ReduceOp.MAX)
+        max_current_allocated_mb = float(memory_tensor[0].item())
+        max_current_reserved_mb = float(memory_tensor[1].item())
+        max_peak_allocated_mb = float(memory_tensor[2].item())
+        max_peak_reserved_mb = float(memory_tensor[3].item())
+        max_total_mb = float(memory_tensor[4].item())
 
     loss_mean = float(np.mean(loss_list)) if loss_list else 0.0
     time_stats = {
@@ -335,10 +362,15 @@ def train_epoch(args, model:torch.nn.Module, local_partition_ids, local_partitio
         "window_forward_backward_total_time": window_forward_backward_total_time,
         "window_forward_backward_avg_time": window_forward_backward_total_time / window_count if window_count > 0 else 0.0,
         "num_processed_windows": window_count,
+        "local_current_allocated_mb": local_current_allocated_mb,
+        "local_current_reserved_mb": local_current_reserved_mb,
         "local_peak_allocated_mb": local_peak_allocated_mb,
         "local_peak_reserved_mb": local_peak_reserved_mb,
+        "max_current_allocated_mb": max_current_allocated_mb,
+        "max_current_reserved_mb": max_current_reserved_mb,
         "max_peak_allocated_mb": max_peak_allocated_mb,
         "max_peak_reserved_mb": max_peak_reserved_mb,
+        "max_total_mb": max_total_mb,
     }
     if args.rank == 0:
         print("------------------------------------------------------------------------------------")
@@ -354,6 +386,27 @@ def train_epoch(args, model:torch.nn.Module, local_partition_ids, local_partitio
                 max_window_steps,
             )
         )
+        log_memory = bool(getattr(args, "log_memory_stats", 0))
+        memory_interval = max(int(getattr(args, "memory_log_interval", 1)), 1)
+        if log_memory and (log_epoch == 1 or log_epoch % memory_interval == 0 or log_epoch == args.epochs):
+            peak_alloc_pct = (time_stats["max_peak_allocated_mb"] / time_stats["max_total_mb"] * 100.0) if time_stats["max_total_mb"] > 0 else 0.0
+            peak_reserved_pct = (time_stats["max_peak_reserved_mb"] / time_stats["max_total_mb"] * 100.0) if time_stats["max_total_mb"] > 0 else 0.0
+            print(
+                "[Memory] Epoch: {:03d}, current_allocated={:.1f}MB, current_reserved={:.1f}MB, "
+                "peak_allocated={:.1f}MB ({:.1f}%), peak_reserved={:.1f}MB ({:.1f}%), "
+                "device_total={:.1f}MB, local_peak_allocated={:.1f}MB, local_peak_reserved={:.1f}MB".format(
+                    log_epoch,
+                    time_stats["max_current_allocated_mb"],
+                    time_stats["max_current_reserved_mb"],
+                    time_stats["max_peak_allocated_mb"],
+                    peak_alloc_pct,
+                    time_stats["max_peak_reserved_mb"],
+                    peak_reserved_pct,
+                    time_stats["max_total_mb"],
+                    time_stats["local_peak_allocated_mb"],
+                    time_stats["local_peak_reserved_mb"],
+                )
+            )
         print("Training epoch time: {:.3f}s".format(time_stats["epoch_train_total_time"]))
         print("------------------------------------------------------------------------------------")
     return loss_mean, scores_by_pid, kv_cache_per_partition, time_stats

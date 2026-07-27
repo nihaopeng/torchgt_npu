@@ -101,6 +101,10 @@ def parser_add_main_args(parser):
                        help='preferred related-node budget ratio for ours augmentation')
     parser.add_argument('--window_hub_ratio', type=float, default=0.15,
                        help='preferred global hub-node budget ratio for ours augmentation')
+    parser.add_argument('--log_memory_stats', type=int, default=0, choices=[0, 1],
+                       help='when set to 1, print per-epoch CUDA memory stats on rank 0')
+    parser.add_argument('--memory_log_interval', type=int, default=1,
+                       help='print memory stats every N epochs when log_memory_stats is enabled')
     
     # distributed args
     parser.add_argument('--rank', type=int, default=None,

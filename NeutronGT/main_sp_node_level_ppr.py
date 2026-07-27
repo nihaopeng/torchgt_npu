@@ -210,6 +210,33 @@ def main():
     sync_device(device)
 
     local_partition_ids, local_partitions = build_local_partitions(structInfo, args.rank, seq_parallel_world_size)
+    if bool(getattr(args, "log_memory_stats", 0)):
+        local_sub_edges = getattr(structInfo, "local_sub_edge_index_for_partition_results", [])
+        local_window_count = len(local_partitions)
+        local_node_sum = sum(int(part.numel()) for part in local_partitions)
+        local_edge_sum = sum(int(edge_index_i.shape[1]) for edge_index_i in local_sub_edges)
+        local_max_nodes = max((int(part.numel()) for part in local_partitions), default=0)
+        local_max_edges = max((int(edge_index_i.shape[1]) for edge_index_i in local_sub_edges), default=0)
+        sum_tensor = torch.tensor([local_window_count, local_node_sum, local_edge_sum], device=device, dtype=torch.float64)
+        max_tensor = torch.tensor([local_max_nodes, local_max_edges], device=device, dtype=torch.float64)
+        if seq_parallel_world_size > 1:
+            dist.all_reduce(sum_tensor, op=dist.ReduceOp.SUM)
+            dist.all_reduce(max_tensor, op=dist.ReduceOp.MAX)
+        if args.rank == 0:
+            total_windows = int(sum_tensor[0].item())
+            avg_nodes = (sum_tensor[1].item() / total_windows) if total_windows > 0 else 0.0
+            avg_edges = (sum_tensor[2].item() / total_windows) if total_windows > 0 else 0.0
+            print(
+                "[WindowMemoryContext] windows={}, avg_nodes={:.1f}, max_nodes={}, "
+                "avg_edges={:.1f}, max_edges={}, sequence_parallel_size={}".format(
+                    total_windows,
+                    avg_nodes,
+                    int(max_tensor[0].item()),
+                    avg_edges,
+                    int(max_tensor[1].item()),
+                    seq_parallel_world_size,
+                )
+            )
 
     model = build_model(args,feature,device,y,graph_in_degree=structInfo.graph_in_degree,graph_out_degree=structInfo.graph_out_degree,num_classes=num_classes)
 
@@ -244,6 +271,10 @@ def main():
             print(f"No checkpoint found under {ckpt_dir}, starting training from scratch.")
 
     detector = LossStagnationDetector(cooldown=0)
+    run_peak_allocated_mb = 0.0
+    run_peak_reserved_mb = 0.0
+    run_peak_total_mb = 0.0
+    run_peak_epoch = 0
     
     for epoch in range(start_epoch, args.epochs):
         display_epoch = epoch + 1
@@ -251,6 +282,12 @@ def main():
                     epoch=epoch,
                     structInfo=structInfo,
                     display_epoch=display_epoch)
+        epoch_peak_allocated_mb = float(time_stats.get("max_peak_allocated_mb", 0.0))
+        if epoch_peak_allocated_mb >= run_peak_allocated_mb:
+            run_peak_allocated_mb = epoch_peak_allocated_mb
+            run_peak_reserved_mb = float(time_stats.get("max_peak_reserved_mb", 0.0))
+            run_peak_total_mb = float(time_stats.get("max_total_mb", 0.0))
+            run_peak_epoch = display_epoch
         
         is_best_checkpoint = False
         should_eval = display_epoch == 1 or display_epoch % 20 == 0 or display_epoch == args.epochs
@@ -312,6 +349,21 @@ def main():
                 print(f"Saved checkpoint(s): {', '.join(saved_paths)}")
             if seq_parallel_world_size > 1:
                 dist.barrier()
+
+    if args.rank == 0 and bool(getattr(args, "log_memory_stats", 0)):
+        peak_alloc_pct = (run_peak_allocated_mb / run_peak_total_mb * 100.0) if run_peak_total_mb > 0 else 0.0
+        peak_reserved_pct = (run_peak_reserved_mb / run_peak_total_mb * 100.0) if run_peak_total_mb > 0 else 0.0
+        print(
+            "[MemorySummary] peak_epoch={}, peak_allocated={:.1f}MB ({:.1f}%), "
+            "peak_reserved={:.1f}MB ({:.1f}%), device_total={:.1f}MB".format(
+                run_peak_epoch,
+                run_peak_allocated_mb,
+                peak_alloc_pct,
+                run_peak_reserved_mb,
+                peak_reserved_pct,
+                run_peak_total_mb,
+            )
+        )
 
 
 if __name__ == "__main__":
