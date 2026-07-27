@@ -93,7 +93,7 @@ def parser_add_main_args(parser):
     parser.add_argument('--refresh_preprocess_cache', type=int, default=0, choices=[0, 1],
                        help='when set to 1, ignore any existing preprocess cache and rebuild it before saving')
     parser.add_argument('--window_aug_strategy', type=str, default='ours',
-                       choices=['random', 'hub', 'related', 'ours', 'hub_related'],
+                       choices=['random', 'hub', 'related', 'ours'],
                        help='fixed-window augmentation strategy used during preprocessing')
     parser.add_argument('--window_extra_node_ratio', type=float, default=0.30,
                        help='target extra unique nodes per core window for window augmentation')

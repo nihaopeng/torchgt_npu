@@ -99,7 +99,7 @@ class weightMetis_keepParent:
             # self.child_partitions = [[tensor,tensor,...],[tensor,tensor,...]]
             # TOD:将对外有联系的对端节点合并入分区。√
         self.timing_stats['child_partition_time'] = time.time() - child_partition_start
-        if self.window_aug_strategy in ('hub', 'ours', 'hub_related'):
+        if self.window_aug_strategy in ('hub', 'ours'):
             hub_start = time.time()
             self.hub_node_order = self._compute_hub_node_order()
             self.timing_stats['hub_node_merge_time'] += time.time() - hub_start
@@ -746,30 +746,6 @@ class weightMetis_keepParent:
                 append_candidates('related', related_candidates, remaining())
             if hub_quota > 0:
                 append_candidates('hub', self.hub_node_order, remaining())
-        elif self.window_aug_strategy == 'hub_related':
-            hub_quota = min(int(core_partition.numel() * max(self.window_hub_ratio, 0.0)), target_extra)
-            related_quota = min(int(core_partition.numel() * max(self.window_related_ratio, 0.0)), target_extra)
-
-            if hub_quota > 0:
-                if self.hub_node_order is None:
-                    hub_start = time.time()
-                    self.hub_node_order = self._compute_hub_node_order()
-                    self.timing_stats['hub_node_merge_time'] += time.time() - hub_start
-                hub_start = time.time()
-                append_candidates('hub', self.hub_node_order, hub_quota)
-                self.timing_stats['hub_node_merge_time'] += time.time() - hub_start
-
-            related_candidates = torch.empty(0, dtype=torch.long)
-            if related_quota > 0:
-                related_start = time.time()
-                related_candidates = self._select_related_nodes(core_partition, max_nodes=target_extra)
-                append_candidates('related', related_candidates, related_quota)
-                self.timing_stats['related_nodes_merge_time'] += time.time() - related_start
-
-            if hub_quota > 0:
-                append_candidates('hub', self.hub_node_order, remaining())
-            if related_quota > 0:
-                append_candidates('related', related_candidates, remaining())
         else:
             raise ValueError(f'Unsupported window_aug_strategy: {self.window_aug_strategy}')
 

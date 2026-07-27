@@ -106,7 +106,7 @@ for DATASET_FLAG in "${DATASET_FLAGS[@]}"; do
             WINDOW_RELATED_RATIO=0.0
             WINDOW_HUB_RATIO="${HALF_EXTRA}"
         else
-            WINDOW_AUG_STRATEGY="hub_related"
+            WINDOW_AUG_STRATEGY="ours"
             WINDOW_EXTRA_RATIO="${FULL_EXTRA}"
             WINDOW_RELATED_RATIO="${HALF_EXTRA}"
             WINDOW_HUB_RATIO="${HALF_EXTRA}"
