@@ -82,13 +82,13 @@ resolve_dataset() {
 resolve_window_params() {
     local dataset="$1"
     if [ "$dataset" = "AmazonProducts" ]; then
-        echo "256 0.10 0.05"
+        echo "192 0.25 0.125"
     elif [ "$dataset" = "ogbn-arxiv" ]; then
-        echo "16 0.30 0.15"
+        echo "8 0.50 0.25"
     elif [ "$dataset" = "ogbn-products" ]; then
-        echo "512 0.10 0.05"
+        echo "384 0.25 0.125"
     elif [ "$dataset" = "reddit" ]; then
-        echo "48 0.15 0.075"
+        echo "32 0.30 0.15"
     else
         return 1
     fi
