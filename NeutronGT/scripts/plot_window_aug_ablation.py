@@ -12,9 +12,9 @@ from pathlib import Path
 
 STAGES = ("no_extra", "hub_half", "hub_related")
 STAGE_LABELS = {
-    "no_extra": "no extra nodes",
-    "hub_half": "50% hub",
-    "hub_related": "50% hub + 50% related",
+    "no_extra": "Non-overlap window",
+    "hub_half": "hub-overlap window",
+    "hub_related": "ours",
 }
 STAGE_COLORS = {
     "no_extra": "#7f7f7f",
@@ -26,6 +26,12 @@ DATASET_FLAGS = {
     "amazon": "AmazonProducts",
     "reddit": "reddit",
     "products": "ogbn-products",
+}
+DATASET_TITLES = {
+    "ogbn-arxiv": "(a) OAV",
+    "AmazonProducts": "(b) AZ",
+    "reddit": "(c) RDT",
+    "ogbn-products": "(d) OPT",
 }
 
 LOG_NAME_RE = re.compile(
@@ -130,9 +136,7 @@ def plot_dataset(
     fig, ax = plt.subplots(figsize=(8.5, 5.2))
     all_values: list[float] = []
     model_names = sorted({series.model for series in series_by_stage.values()})
-    nparts_values = sorted({series.nparts for series in series_by_stage.values()})
     model_label = model_names[0] if len(model_names) == 1 else "/".join(model_names)
-    nparts_label = str(nparts_values[0]) if len(nparts_values) == 1 else "/".join(map(str, nparts_values))
 
     for stage in STAGES:
         series = series_by_stage.get(stage)
@@ -151,7 +155,7 @@ def plot_dataset(
             markersize=3.5,
         )
 
-    ax.set_title(f"{dataset} {model_label} cumulative augmentation ablation (n_parts={nparts_label})")
+    ax.set_title(DATASET_TITLES.get(dataset, dataset))
     ax.set_xlabel("Epoch")
     ax.set_ylabel(f"{acc_split.capitalize()} Accuracy (%)")
     ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.45)
