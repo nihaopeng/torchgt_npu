@@ -25,8 +25,9 @@ export LD_LIBRARY_PATH=$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}
 DEVICES=${1-}
 if [ -z "$DEVICES" ] || [[ "$DEVICES" == -* ]]; then
     echo "Usage: bash $0 <devices> [--GT|--GPH_Slim|--GPH_Large|--ALL] [--preprocess_only] [--refresh_preprocess_cache] [--epochs N]"
-    echo "Example: bash $0 0,1,2,3                                             # 默认 --ALL, 40 epoch, 复用 cache"
+    echo "Example: bash $0 0,1,2,3                                             # 默认 --ALL, 40 epoch, 复用/保存 cache"
     echo "         bash $0 0,1,2,3 --GT                                        # 仅 GT"
+    echo "         bash $0 0,1,2,3 --GT --GPH_Large --epochs 40                # 只跑 GT + GPH_Large"
     echo "         bash $0 0,1,2,3 --ALL --epochs 40 --refresh_preprocess_cache # 三模型重建 cache 后训练"
     echo "         bash $0 0,1,2,3 --ALL --preprocess_only --refresh_preprocess_cache"
     exit 1
