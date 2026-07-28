@@ -686,6 +686,9 @@ class weightMetis_keepParent:
         partition_id: int,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         core_partition = torch.unique(core_partition.to(torch.long))
+        if self.window_aug_strategy == 'none':
+            return core_partition, torch.empty((2, 0), dtype=torch.long)
+
         target_extra = self._target_extra_count(core_partition)
         self.timing_stats['augmentation_target_extra_nodes'] += int(target_extra)
         selected_set = set(int(x) for x in core_partition.tolist())

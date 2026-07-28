@@ -100,8 +100,14 @@ for DATASET_FLAG in "${DATASET_FLAGS[@]}"; do
     DATASET=$(resolve_dataset "${DATASET_FLAG}")
     read -r NPARTS FULL_EXTRA HALF_EXTRA <<< "$(resolve_window_params "${DATASET}")"
 
-    for STAGE in hub_half hub_related; do
-        if [ "$STAGE" = "hub_half" ]; then
+    for STAGE in no_extra hub_half hub_related; do
+        if [ "$STAGE" = "no_extra" ]; then
+            WINDOW_AUG_STRATEGY="none"
+            WINDOW_EXTRA_RATIO=0.0
+            WINDOW_RELATED_RATIO=0.0
+            WINDOW_HUB_RATIO=0.0
+            STAGE_USE_PREPROCESS_CACHE=0
+        elif [ "$STAGE" = "hub_half" ]; then
             WINDOW_AUG_STRATEGY="hub"
             WINDOW_EXTRA_RATIO="${HALF_EXTRA}"
             WINDOW_RELATED_RATIO=0.0

@@ -10,18 +10,26 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-STAGES = ("hub_half", "hub_related")
+STAGES = ("no_extra", "hub_half", "hub_related")
 STAGE_LABELS = {
+    "no_extra": "no extra nodes",
     "hub_half": "50% hub",
     "hub_related": "50% hub + 50% related",
 }
 STAGE_COLORS = {
+    "no_extra": "#7f7f7f",
     "hub_half": "#ff7f0e",
     "hub_related": "#1f77b4",
 }
+DATASET_FLAGS = {
+    "arxiv": "ogbn-arxiv",
+    "amazon": "AmazonProducts",
+    "reddit": "reddit",
+    "products": "ogbn-products",
+}
 
 LOG_NAME_RE = re.compile(
-    r"(?P<dataset>.+?)_(?P<model>GPH_Slim)_(?P<stage>hub_half|hub_related)_"
+    r"(?P<dataset>.+?)_(?P<model>GPH_Slim)_(?P<stage>no_extra|hub_half|hub_related)_"
     r"e(?P<epochs>\d+)_nparts(?P<nparts>\d+)_.*\.log$"
 )
 ACC_RE = re.compile(
@@ -209,7 +217,7 @@ def write_summary_csv(output_dir: Path, grouped: dict[str, dict[str, AblationSer
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Plot hub-half vs hub-related cumulative augmentation ablation accuracy curves."
+        description="Plot no-extra, hub-half, and hub-related cumulative augmentation ablation accuracy curves."
     )
     parser.add_argument("log_dir", type=Path, help="Folder containing ablation *.log files.")
     parser.add_argument(
@@ -233,7 +241,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dpi", type=int, default=160, help="Output image DPI. Default: 160.")
     parser.add_argument("--no-csv", action="store_true", help="Do not write summary CSV.")
+    parser.add_argument("--arxiv", action="store_true", help="Only plot ogbn-arxiv logs.")
+    parser.add_argument("--amazon", action="store_true", help="Only plot AmazonProducts logs.")
+    parser.add_argument("--reddit", action="store_true", help="Only plot reddit logs.")
+    parser.add_argument("--products", action="store_true", help="Only plot ogbn-products logs.")
     return parser.parse_args()
+
+
+def selected_datasets(args: argparse.Namespace) -> set[str] | None:
+    selected = {dataset for flag, dataset in DATASET_FLAGS.items() if getattr(args, flag)}
+    return selected or None
 
 
 def main() -> None:
@@ -246,6 +263,12 @@ def main() -> None:
     grouped = load_log_folder(log_dir)
     if not grouped:
         raise ValueError(f"No matching ablation logs found in: {log_dir}")
+    dataset_filter = selected_datasets(args)
+    if dataset_filter is not None:
+        grouped = {dataset: series for dataset, series in grouped.items() if dataset in dataset_filter}
+        if not grouped:
+            expected = ", ".join(sorted(dataset_filter))
+            raise ValueError(f"No matching ablation logs found for selected dataset(s): {expected}")
 
     for dataset in sorted(grouped):
         missing = [stage for stage in STAGES if stage not in grouped[dataset]]
