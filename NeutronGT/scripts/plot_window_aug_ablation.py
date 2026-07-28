@@ -12,7 +12,7 @@ from pathlib import Path
 
 STAGES = ("no_extra", "hub_half", "hub_related")
 STAGE_LABELS = {
-    "no_extra": "Non-overlap window",
+    "no_extra": "non-overlap window",
     "hub_half": "hub-overlap window",
     "hub_related": "ours",
 }
@@ -29,9 +29,9 @@ DATASET_FLAGS = {
 }
 DATASET_TITLES = {
     "ogbn-arxiv": "(a) OAV",
-    "AmazonProducts": "(b) AZ",
+    "ogbn-products": "(b) OPT",
     "reddit": "(c) RDT",
-    "ogbn-products": "(d) OPT",
+    "AmazonProducts": "(d) AZ",
 }
 
 LOG_NAME_RE = re.compile(
@@ -113,14 +113,7 @@ def set_tight_ylim(ax, values: list[float]) -> None:
     ax.set_ylim(low - pad, high + pad)
 
 
-def plot_dataset(
-    dataset: str,
-    series_by_stage: dict[str, AblationSeries],
-    output_dir: Path,
-    acc_split: str,
-    zoom_start: int | None,
-    dpi: int,
-) -> Path:
+def setup_matplotlib():
     try:
         import matplotlib
     except ModuleNotFoundError as exc:
@@ -131,13 +124,21 @@ def plot_dataset(
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
+    return plt
+
+
+def draw_dataset_axes(
+    ax,
+    dataset: str,
+    series_by_stage: dict[str, AblationSeries],
+    acc_split: str,
+    zoom_start: int | None,
+    show_ylabel: bool = True,
+) -> None:
     from matplotlib.ticker import MaxNLocator
 
-    fig, ax = plt.subplots(figsize=(8.5, 5.2))
     all_values: list[float] = []
-    model_names = sorted({series.model for series in series_by_stage.values()})
-    model_label = model_names[0] if len(model_names) == 1 else "/".join(model_names)
-
     for stage in STAGES:
         series = series_by_stage.get(stage)
         if series is None:
@@ -150,25 +151,75 @@ def plot_dataset(
             values,
             label=STAGE_LABELS[stage],
             color=STAGE_COLORS[stage],
-            linewidth=2.0,
+            linewidth=1.9,
             marker="o",
-            markersize=3.5,
+            markersize=3.0,
         )
 
-    ax.set_title(DATASET_TITLES.get(dataset, dataset))
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel(f"{acc_split.capitalize()} Accuracy (%)")
+    ax.set_xlabel("Epoch", fontsize=11)
+    if show_ylabel:
+        ax.set_ylabel(f"{acc_split.capitalize()} Accuracy (%)", fontsize=11)
     ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.45)
-    ax.legend(loc="best")
-    ax.yaxis.set_major_locator(MaxNLocator(nbins=7))
+    ax.legend(loc="lower right", fontsize=8.5, framealpha=0.9)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
     ax.ticklabel_format(axis="y", style="plain", useOffset=False)
     if zoom_start is not None:
         set_tight_ylim(ax, all_values)
+    ax.text(
+        0.5,
+        -0.26,
+        DATASET_TITLES.get(dataset, dataset),
+        transform=ax.transAxes,
+        ha="center",
+        va="top",
+        fontsize=17,
+        fontweight="bold",
+    )
 
-    fig.tight_layout()
+
+def plot_dataset(
+    dataset: str,
+    series_by_stage: dict[str, AblationSeries],
+    output_dir: Path,
+    acc_split: str,
+    zoom_start: int | None,
+    dpi: int,
+) -> Path:
+    plt = setup_matplotlib()
+    fig, ax = plt.subplots(figsize=(6.8, 4.1))
+    model_names = sorted({series.model for series in series_by_stage.values()})
+    model_label = model_names[0] if len(model_names) == 1 else "/".join(model_names)
+    draw_dataset_axes(ax, dataset, series_by_stage, acc_split, zoom_start, show_ylabel=True)
+
+    fig.tight_layout(rect=(0, 0.08, 1, 1))
     output_dir.mkdir(parents=True, exist_ok=True)
     zoom_suffix = f"_from{zoom_start}" if zoom_start is not None else ""
     output_path = output_dir / f"{dataset}_{model_label}_{acc_split}_ablation{zoom_suffix}.png"
+    fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_ab_pair(
+    grouped: dict[str, dict[str, AblationSeries]],
+    output_dir: Path,
+    acc_split: str,
+    zoom_start: int | None,
+    dpi: int,
+) -> Path | None:
+    pair = ("ogbn-arxiv", "ogbn-products")
+    if any(dataset not in grouped for dataset in pair):
+        return None
+
+    plt = setup_matplotlib()
+    fig, axes = plt.subplots(1, 2, figsize=(9.4, 3.7))
+    draw_dataset_axes(axes[0], pair[0], grouped[pair[0]], acc_split, zoom_start, show_ylabel=True)
+    draw_dataset_axes(axes[1], pair[1], grouped[pair[1]], acc_split, zoom_start, show_ylabel=False)
+
+    fig.tight_layout(w_pad=1.3, rect=(0, 0.10, 1, 1))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    zoom_suffix = f"_from{zoom_start}" if zoom_start is not None else ""
+    output_path = output_dir / f"OAV_OPT_GPH_Slim_{acc_split}_ablation{zoom_suffix}.png"
     fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
     return output_path
@@ -280,6 +331,10 @@ def main() -> None:
             print(f"Warning: {dataset} missing stages: {', '.join(missing)}")
         output_path = plot_dataset(dataset, grouped[dataset], output_dir, args.acc_split, args.zoom_start, args.dpi)
         print(f"Figure saved to: {output_path}")
+
+    ab_output_path = plot_ab_pair(grouped, output_dir, args.acc_split, args.zoom_start, args.dpi)
+    if ab_output_path is not None:
+        print(f"Paired figure saved to: {ab_output_path}")
 
     if not args.no_csv:
         csv_path = write_summary_csv(output_dir, grouped)
