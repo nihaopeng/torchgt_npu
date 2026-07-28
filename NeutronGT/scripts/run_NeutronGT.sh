@@ -112,7 +112,11 @@ resolve_run_params() {
             echo "224 40 8192 5 120 0.20 0.10 0.10"
         fi
     elif [ "$dataset" = "ogbn-arxiv" ]; then
-        echo "16 40 8192 5 120 0.30 0.15 0.15"
+        if [ "$model_alias" = "GPH_Large" ]; then
+            echo "32 40 8192 5 120 0.30 0.15 0.15"
+        else
+            echo "16 40 8192 5 120 0.30 0.15 0.15"
+        fi
     elif [ "$dataset" = "ogbn-products" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
             echo "768 40 8192 5 120 0.10 0.05 0.05"
