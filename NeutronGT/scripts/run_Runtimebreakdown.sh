@@ -75,7 +75,7 @@ USE_CACHE=1
 EPOCHS=500
 
 if [ "$dataset" = "AmazonProducts" ]; then
-    NPARTS=512
+    NPARTS=640
     WINDOW_EXTRA_RATIO=0.10
     WINDOW_RELATED_RATIO=0.05
     WINDOW_HUB_RATIO=0.05
@@ -90,7 +90,7 @@ elif [ "$dataset" = "ogbn-products" ]; then
     WINDOW_RELATED_RATIO=0.05
     WINDOW_HUB_RATIO=0.05
 elif [ "$dataset" = "reddit" ]; then
-    NPARTS=128
+    NPARTS=160
     WINDOW_EXTRA_RATIO=0.10
     WINDOW_RELATED_RATIO=0.05
     WINDOW_HUB_RATIO=0.05

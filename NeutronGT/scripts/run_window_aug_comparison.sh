@@ -121,7 +121,7 @@ resolve_window_params() {
     local model_alias="$2"
     if [ "$dataset" = "AmazonProducts" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "512 0.10 0.05 0.05"
+            echo "640 0.10 0.05 0.05"
         else
             echo "224 0.20 0.10 0.10"
         fi
@@ -139,7 +139,7 @@ resolve_window_params() {
         fi
     elif [ "$dataset" = "reddit" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "128 0.10 0.05 0.05"
+            echo "160 0.10 0.05 0.05"
         else
             echo "32 0.20 0.10 0.10"
         fi

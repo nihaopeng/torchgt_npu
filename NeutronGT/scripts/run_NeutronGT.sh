@@ -107,7 +107,7 @@ resolve_run_params() {
 
     if [ "$dataset" = "AmazonProducts" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "512 40 8192 5 120 0.10 0.05 0.05"
+            echo "640 40 8192 5 120 0.10 0.05 0.05"
         else
             echo "224 40 8192 5 120 0.20 0.10 0.10"
         fi
@@ -125,7 +125,7 @@ resolve_run_params() {
         fi
     elif [ "$dataset" = "reddit" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "128 40 8192 5 120 0.10 0.05 0.05"
+            echo "160 40 8192 5 120 0.10 0.05 0.05"
         else
             echo "32 40 8192 5 120 0.20 0.10 0.10"
         fi
