@@ -56,7 +56,6 @@ FFN_DIM=64
 NUM_HEADS=8
 ATTN_TYPE="sparse"
 USE_CACHE=1
-USE_PREPROCESS_CACHE=0
 LOG_MEMORY_STATS=1
 MEMORY_LOG_INTERVAL=1
 TIMEOUT=120
@@ -107,11 +106,13 @@ for DATASET_FLAG in "${DATASET_FLAGS[@]}"; do
             WINDOW_EXTRA_RATIO="${HALF_EXTRA}"
             WINDOW_RELATED_RATIO=0.0
             WINDOW_HUB_RATIO="${HALF_EXTRA}"
+            STAGE_USE_PREPROCESS_CACHE=0
         else
             WINDOW_AUG_STRATEGY="ours"
             WINDOW_EXTRA_RATIO="${FULL_EXTRA}"
             WINDOW_RELATED_RATIO="${HALF_EXTRA}"
             WINDOW_HUB_RATIO="${HALF_EXTRA}"
+            STAGE_USE_PREPROCESS_CACHE=1
         fi
 
         MODE_LABEL="train"
@@ -130,7 +131,7 @@ for DATASET_FLAG in "${DATASET_FLAGS[@]}"; do
         echo "strategy=${WINDOW_AUG_STRATEGY}"
         echo "n_parts=${NPARTS} epochs=${EPOCHS}"
         echo "window extra=${WINDOW_EXTRA_RATIO} related=${WINDOW_RELATED_RATIO} hub=${WINDOW_HUB_RATIO}"
-        echo "cache=${USE_CACHE} preprocess_cache=${USE_PREPROCESS_CACHE} log_memory=${LOG_MEMORY_STATS} memory_interval=${MEMORY_LOG_INTERVAL}"
+        echo "cache=${USE_CACHE} preprocess_cache=${STAGE_USE_PREPROCESS_CACHE} log_memory=${LOG_MEMORY_STATS} memory_interval=${MEMORY_LOG_INTERVAL}"
         echo "GPUs=${GPU_NUM} CUDA_VISIBLE_DEVICES=${DEVICES} master_port=${MASTER_PORT}"
         echo "Log: ${LOG_FILE}"
         echo "============================================================="
@@ -149,7 +150,7 @@ for DATASET_FLAG in "${DATASET_FLAGS[@]}"; do
             --num_heads "${NUM_HEADS}" \
             --epochs "${EPOCHS}" \
             --use_cache "${USE_CACHE}" \
-            --use_preprocess_cache "${USE_PREPROCESS_CACHE}" \
+            --use_preprocess_cache "${STAGE_USE_PREPROCESS_CACHE}" \
             --n_parts "${NPARTS}" \
             --window_aug_strategy "${WINDOW_AUG_STRATEGY}" \
             --window_extra_node_ratio "${WINDOW_EXTRA_RATIO}" \
