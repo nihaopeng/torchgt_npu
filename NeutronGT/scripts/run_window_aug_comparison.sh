@@ -126,11 +126,7 @@ resolve_window_params() {
             echo "224 0.20 0.10 0.10"
         fi
     elif [ "$dataset" = "ogbn-arxiv" ]; then
-        if [ "$model_alias" = "GPH_Large" ]; then
-            echo "16 0.40 0.20 0.20"
-        else
-            echo "8 0.50 0.25 0.25"
-        fi
+        echo "16 0.30 0.15 0.15"
     elif [ "$dataset" = "ogbn-products" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
             echo "768 0.10 0.05 0.05"

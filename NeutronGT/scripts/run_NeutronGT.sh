@@ -98,9 +98,9 @@ resolve_run_params() {
 
     if [ "$dataset" = "ogbn-papers100M" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "2560 40 2048 32 640 0.10 0.05 0.05"
+            echo "3072 40 2048 32 640 0.10 0.05 0.05"
         else
-            echo "1000 40 2048 32 640 0.10 0.05 0.05"
+            echo "1200 40 2048 32 640 0.10 0.05 0.05"
         fi
         return 0
     fi
@@ -112,11 +112,7 @@ resolve_run_params() {
             echo "224 40 8192 5 120 0.20 0.10 0.10"
         fi
     elif [ "$dataset" = "ogbn-arxiv" ]; then
-        if [ "$model_alias" = "GPH_Large" ]; then
-            echo "16 40 8192 5 120 0.40 0.20 0.20"
-        else
-            echo "8 40 8192 5 120 0.50 0.25 0.25"
-        fi
+        echo "16 40 8192 5 120 0.30 0.15 0.15"
     elif [ "$dataset" = "ogbn-products" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
             echo "768 40 8192 5 120 0.10 0.05 0.05"
