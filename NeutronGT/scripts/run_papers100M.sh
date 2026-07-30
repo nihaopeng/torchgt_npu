@@ -80,7 +80,6 @@ PPR_TOPK=5
 PPR_ALPHA=0.85
 PPR_NUM_ITER=10
 PPR_BATCH_SIZE=2048
-PPR_ITER_TOPK=32
 USE_CACHE=1
 USE_PREPROCESS_CACHE=1
 TIMEOUT=640
@@ -103,6 +102,7 @@ for MODEL_ALIAS in "${MODELS[@]}"; do
             WINDOW_EXTRA_RATIO=0.10
             WINDOW_RELATED_RATIO=0.05
             WINDOW_HUB_RATIO=0.05
+            PPR_ITER_TOPK=32
             ;;
         "GPH_Slim")
             MODEL="graphormer"
@@ -111,14 +111,16 @@ for MODEL_ALIAS in "${MODELS[@]}"; do
             WINDOW_EXTRA_RATIO=0.10
             WINDOW_RELATED_RATIO=0.05
             WINDOW_HUB_RATIO=0.05
+            PPR_ITER_TOPK=32
             ;;
         "GPH_Large")
             MODEL="graphormer"
             N_LAYERS=12; HIDDEN_DIM=768; FFN_DIM=768; NUM_HEADS=32
-            NPARTS=3072
-            WINDOW_EXTRA_RATIO=0.10
-            WINDOW_RELATED_RATIO=0.05
-            WINDOW_HUB_RATIO=0.05
+            NPARTS=4096
+            WINDOW_EXTRA_RATIO=0.05
+            WINDOW_RELATED_RATIO=0.04
+            WINDOW_HUB_RATIO=0.01
+            PPR_ITER_TOPK=16
             ;;
     esac
 
@@ -138,6 +140,7 @@ for MODEL_ALIAS in "${MODELS[@]}"; do
     echo "  layers=${N_LAYERS} hidden=${HIDDEN_DIM} ffn=${FFN_DIM} heads=${NUM_HEADS}"
     echo "  n_parts=${NPARTS} epochs=${EPOCHS}"
     echo "  window_aug=ours extra=${WINDOW_EXTRA_RATIO} related=${WINDOW_RELATED_RATIO} hub=${WINDOW_HUB_RATIO}"
+    echo "  ppr_iter_topk=${PPR_ITER_TOPK}"
     echo "  preprocess_cache=${USE_PREPROCESS_CACHE} refresh_preprocess_cache=${REFRESH_PREPROCESS_CACHE}"
     echo "  GPUs=${GPU_NUM}  master_port=${MASTER_PORT}  timeout=${TIMEOUT}m  log=${LOG_FILE}"
     echo "============================================================="

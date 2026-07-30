@@ -98,7 +98,7 @@ resolve_run_params() {
 
     if [ "$dataset" = "ogbn-papers100M" ]; then
         if [ "$model_alias" = "GPH_Large" ]; then
-            echo "3072 40 2048 32 640 0.10 0.05 0.05"
+            echo "4096 40 2048 16 640 0.05 0.04 0.01"
         else
             echo "1200 40 2048 32 640 0.10 0.05 0.05"
         fi
