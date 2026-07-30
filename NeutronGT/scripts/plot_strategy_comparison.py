@@ -121,14 +121,7 @@ def set_zoom_ylim(ax, values: list[float], min_pad: float) -> None:
     ax.set_ylim(low - pad, high + pad)
 
 
-def plot_dataset(
-    dataset: str,
-    series_by_strategy: dict[str, LogSeries],
-    output_dir: Path,
-    acc_split: str,
-    zoom_start: int,
-    dpi: int,
-) -> Path:
+def setup_matplotlib():
     try:
         import matplotlib
     except ModuleNotFoundError as exc:
@@ -138,7 +131,39 @@ def plot_dataset(
         ) from exc
 
     matplotlib.use("Agg")
+    matplotlib.rcParams["pdf.fonttype"] = 42
+    matplotlib.rcParams["ps.fonttype"] = 42
     import matplotlib.pyplot as plt
+
+    return plt
+
+
+def output_formats(output_format: str) -> tuple[str, ...]:
+    if output_format == "both":
+        return ("png", "pdf")
+    return (output_format,)
+
+
+def save_figure(fig, output_dir: Path, stem: str, output_format: str, dpi: int) -> list[Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_paths: list[Path] = []
+    for fmt in output_formats(output_format):
+        output_path = output_dir / f"{stem}.{fmt}"
+        fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
+        output_paths.append(output_path)
+    return output_paths
+
+
+def plot_dataset(
+    dataset: str,
+    series_by_strategy: dict[str, LogSeries],
+    output_dir: Path,
+    acc_split: str,
+    zoom_start: int,
+    dpi: int,
+    output_format: str,
+) -> list[Path]:
+    plt = setup_matplotlib()
     from matplotlib.ticker import MaxNLocator
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 9), sharex=False)
@@ -220,11 +245,10 @@ def plot_dataset(
     fig.suptitle(f"{dataset} {model_label} vertex-copy strategies (n_parts={nparts_label})")
     fig.tight_layout()
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{dataset}_{model_label}_{acc_split}_strategy_curves.png"
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
+    output_stem = f"{dataset}_{model_label}_{acc_split}_strategy_curves"
+    output_paths = save_figure(fig, output_dir, output_stem, output_format, dpi)
     plt.close(fig)
-    return output_path
+    return output_paths
 
 
 def write_summary_csv(output_dir: Path, grouped: dict[str, dict[str, LogSeries]]) -> Path:
@@ -310,6 +334,13 @@ def parse_args() -> argparse.Namespace:
         help="Start epoch for zoomed loss/accuracy panels. Default: 100.",
     )
     parser.add_argument("--dpi", type=int, default=160, help="Output image DPI. Default: 160.")
+    parser.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("png", "pdf", "both"),
+        default="png",
+        help="Figure output format. Default: png.",
+    )
     parser.add_argument("--no-csv", action="store_true", help="Do not write summary CSV.")
     return parser.parse_args()
 
@@ -329,15 +360,17 @@ def main() -> None:
         missing = [strategy for strategy in STRATEGIES if strategy not in grouped[dataset]]
         if missing:
             print(f"Warning: {dataset} missing strategies: {', '.join(missing)}")
-        output_path = plot_dataset(
+        output_paths = plot_dataset(
             dataset,
             grouped[dataset],
             output_dir,
             args.acc_split,
             args.zoom_start,
             args.dpi,
+            args.output_format,
         )
-        print(f"Figure saved to: {output_path}")
+        for output_path in output_paths:
+            print(f"Figure saved to: {output_path}")
 
     if not args.no_csv:
         csv_path = write_summary_csv(output_dir, grouped)

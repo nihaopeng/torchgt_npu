@@ -123,9 +123,27 @@ def setup_matplotlib():
         ) from exc
 
     matplotlib.use("Agg")
+    matplotlib.rcParams["pdf.fonttype"] = 42
+    matplotlib.rcParams["ps.fonttype"] = 42
     import matplotlib.pyplot as plt
 
     return plt
+
+
+def output_formats(output_format: str) -> tuple[str, ...]:
+    if output_format == "both":
+        return ("png", "pdf")
+    return (output_format,)
+
+
+def save_figure(fig, output_dir: Path, stem: str, output_format: str, dpi: int) -> list[Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_paths: list[Path] = []
+    for fmt in output_formats(output_format):
+        output_path = output_dir / f"{stem}.{fmt}"
+        fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
+        output_paths.append(output_path)
+    return output_paths
 
 
 def draw_dataset_axes(
@@ -184,7 +202,8 @@ def plot_dataset(
     acc_split: str,
     zoom_start: int | None,
     dpi: int,
-) -> Path:
+    output_format: str,
+) -> list[Path]:
     plt = setup_matplotlib()
     fig, ax = plt.subplots(figsize=(6.8, 4.1))
     model_names = sorted({series.model for series in series_by_stage.values()})
@@ -192,12 +211,11 @@ def plot_dataset(
     draw_dataset_axes(ax, dataset, series_by_stage, acc_split, zoom_start, show_ylabel=True)
 
     fig.tight_layout(rect=(0, 0.08, 1, 1))
-    output_dir.mkdir(parents=True, exist_ok=True)
     zoom_suffix = f"_from{zoom_start}" if zoom_start is not None else ""
-    output_path = output_dir / f"{dataset}_{model_label}_{acc_split}_ablation{zoom_suffix}.png"
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
+    output_stem = f"{dataset}_{model_label}_{acc_split}_ablation{zoom_suffix}"
+    output_paths = save_figure(fig, output_dir, output_stem, output_format, dpi)
     plt.close(fig)
-    return output_path
+    return output_paths
 
 
 def plot_ab_pair(
@@ -206,10 +224,11 @@ def plot_ab_pair(
     acc_split: str,
     zoom_start: int | None,
     dpi: int,
-) -> Path | None:
+    output_format: str,
+) -> list[Path]:
     pair = ("ogbn-arxiv", "ogbn-products")
     if any(dataset not in grouped for dataset in pair):
-        return None
+        return []
 
     plt = setup_matplotlib()
     fig, axes = plt.subplots(1, 2, figsize=(9.4, 3.7))
@@ -217,12 +236,11 @@ def plot_ab_pair(
     draw_dataset_axes(axes[1], pair[1], grouped[pair[1]], acc_split, zoom_start, show_ylabel=False)
 
     fig.tight_layout(w_pad=1.3, rect=(0, 0.10, 1, 1))
-    output_dir.mkdir(parents=True, exist_ok=True)
     zoom_suffix = f"_from{zoom_start}" if zoom_start is not None else ""
-    output_path = output_dir / f"OAV_OPT_GPH_Slim_{acc_split}_ablation{zoom_suffix}.png"
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
+    output_stem = f"OAV_OPT_GPH_Slim_{acc_split}_ablation{zoom_suffix}"
+    output_paths = save_figure(fig, output_dir, output_stem, output_format, dpi)
     plt.close(fig)
-    return output_path
+    return output_paths
 
 
 def write_summary_csv(output_dir: Path, grouped: dict[str, dict[str, AblationSeries]]) -> Path:
@@ -295,6 +313,13 @@ def parse_args() -> argparse.Namespace:
         help="Only plot points from this epoch onward and tighten the y-axis.",
     )
     parser.add_argument("--dpi", type=int, default=160, help="Output image DPI. Default: 160.")
+    parser.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("png", "pdf", "both"),
+        default="png",
+        help="Figure output format. Default: png.",
+    )
     parser.add_argument("--no-csv", action="store_true", help="Do not write summary CSV.")
     parser.add_argument("--arxiv", action="store_true", help="Only plot ogbn-arxiv logs.")
     parser.add_argument("--amazon", action="store_true", help="Only plot AmazonProducts logs.")
@@ -329,11 +354,19 @@ def main() -> None:
         missing = [stage for stage in STAGES if stage not in grouped[dataset]]
         if missing:
             print(f"Warning: {dataset} missing stages: {', '.join(missing)}")
-        output_path = plot_dataset(dataset, grouped[dataset], output_dir, args.acc_split, args.zoom_start, args.dpi)
-        print(f"Figure saved to: {output_path}")
+        output_paths = plot_dataset(
+            dataset,
+            grouped[dataset],
+            output_dir,
+            args.acc_split,
+            args.zoom_start,
+            args.dpi,
+            args.output_format,
+        )
+        for output_path in output_paths:
+            print(f"Figure saved to: {output_path}")
 
-    ab_output_path = plot_ab_pair(grouped, output_dir, args.acc_split, args.zoom_start, args.dpi)
-    if ab_output_path is not None:
+    for ab_output_path in plot_ab_pair(grouped, output_dir, args.acc_split, args.zoom_start, args.dpi, args.output_format):
         print(f"Paired figure saved to: {ab_output_path}")
 
     if not args.no_csv:
