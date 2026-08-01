@@ -46,7 +46,6 @@ class CoreAttention(nn.Module):
 
         q = q * self.scale
         x = torch.matmul(q, k)
-        score = x
 
         if attn_bias is not None:
             x = x + attn_bias
@@ -58,6 +57,8 @@ class CoreAttention(nn.Module):
             x = x.masked_fill(mask, -1e9)
 
         x = torch.softmax(x, dim=3)
+        score = x
+        self._pair_scores = score.detach().mean(dim=1).squeeze(0)  # [N,N] 对级注意力权重，供实验分析用
         x = self.att_dropout(x)
         x = x.matmul(v)
         x = x.transpose(1, 2).contiguous()
@@ -364,7 +365,7 @@ class Graphormer(nn.Module):
                 new_kv_cache.append((None, None))
 
         output = self.final_ln(output)
-        log(f"final output:{output.shape}")
+        # log(f"final output:{output.shape}")
         output = self.downstream_out_proj(output[0, :, :])
 
         updated_kv_cache = dup_nodes_kv_cache

@@ -75,7 +75,6 @@ class CoreAttention(nn.Module):
         q = q * self.scale
         x = torch.matmul(q, k)  # [b, num_head, seq_len, seq_len]
         log(f"x shape:{x.shape}")
-        score = x
         if attn_bias is not None:
             # attn_bias = attn_bias.repeat(1, self.num_heads, 1, 1)
             x = x + attn_bias
@@ -100,6 +99,8 @@ class CoreAttention(nn.Module):
         # score = x
 
         x = torch.softmax(x, dim=3)
+        score = x
+        self._pair_scores = score.detach().mean(dim=1).squeeze(0)  # [N,N] 对级注意力权重，供实验分析用
         x = self.att_dropout(x)
         x = x.matmul(v)  # [b, h, q_len, attn]
         log(f"x shape:{x.shape}")
@@ -656,9 +657,9 @@ class GT_SW(nn.Module):
         # t6 = time.time()
         # print(f"cost time6:{t6-t5:.3f}")
         
-        log(f"final output:{output.shape}")
+        # log(f"final output:{output.shape}")
         output = self.MLP_layer(output[0, :, :])
-        log(f"final output:{output.shape}")
+        # log(f"final output:{output.shape}")
         
         # 构建新的KV cache结构
         updated_kv_cache = dup_nodes_kv_cache

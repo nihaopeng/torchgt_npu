@@ -34,6 +34,7 @@ run_graph.sh
 data
 data/
 data/*
+NeutronGT/dataset
 
 old_logs/
 old_logs/*
@@ -41,3 +42,5 @@ run.sh
 
 
 NeutronGT_logs/
+
+*.zip
