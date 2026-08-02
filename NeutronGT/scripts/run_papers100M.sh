@@ -82,6 +82,7 @@ PPR_NUM_ITER=10
 PPR_BATCH_SIZE=2048
 USE_CACHE=1
 USE_PREPROCESS_CACHE=1
+SUBGRAPH_BUILDER="edge_scan"
 TIMEOUT=640
 
 mkdir -p "${LOG_DIR}"
@@ -140,6 +141,7 @@ for MODEL_ALIAS in "${MODELS[@]}"; do
     echo "  layers=${N_LAYERS} hidden=${HIDDEN_DIM} ffn=${FFN_DIM} heads=${NUM_HEADS}"
     echo "  n_parts=${NPARTS} epochs=${EPOCHS}"
     echo "  window_aug=ours extra=${WINDOW_EXTRA_RATIO} related=${WINDOW_RELATED_RATIO} hub=${WINDOW_HUB_RATIO}"
+    echo "  subgraph_builder=${SUBGRAPH_BUILDER}"
     echo "  ppr_iter_topk=${PPR_ITER_TOPK}"
     echo "  preprocess_cache=${USE_PREPROCESS_CACHE} refresh_preprocess_cache=${REFRESH_PREPROCESS_CACHE}"
     echo "  GPUs=${GPU_NUM}  master_port=${MASTER_PORT}  timeout=${TIMEOUT}m  log=${LOG_FILE}"
@@ -166,6 +168,7 @@ for MODEL_ALIAS in "${MODELS[@]}"; do
         --window_extra_node_ratio "${WINDOW_EXTRA_RATIO}" \
         --window_related_ratio "${WINDOW_RELATED_RATIO}" \
         --window_hub_ratio "${WINDOW_HUB_RATIO}" \
+        --subgraph_builder "${SUBGRAPH_BUILDER}" \
         --ppr_backend "${PPR_BACKEND}" \
         --ppr_topk "${PPR_TOPK}" \
         --ppr_alpha "${PPR_ALPHA}" \

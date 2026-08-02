@@ -86,6 +86,7 @@ EPOCHS=500
 ATTN_TYPE="sparse"
 USE_CACHE=1
 USE_PREPROCESS_CACHE=1
+SUBGRAPH_BUILDER="edge_scan"
 TIMEOUT=120
 PPR_BATCH_SIZE=8192
 PPR_ITER_TOPK=5
@@ -174,6 +175,7 @@ for DATASET_FLAG in "${DATASET_FLAGS[@]}"; do
         echo "Strategy: ${STRATEGY}"
         echo "n_parts=${NPARTS} epochs=${EPOCHS}"
         echo "window extra=${WINDOW_EXTRA_RATIO} related=${WINDOW_RELATED_RATIO} hub=${WINDOW_HUB_RATIO}"
+        echo "subgraph_builder=${SUBGRAPH_BUILDER}"
         echo "cache=${USE_CACHE} preprocess_cache=${USE_PREPROCESS_CACHE} refresh=${REFRESH_PREPROCESS_CACHE}"
         echo "GPUs=${GPU_NUM} CUDA_VISIBLE_DEVICES=${DEVICES} master_port=${MASTER_PORT}"
         echo "Log: ${LOG_FILE}"
@@ -200,6 +202,7 @@ for DATASET_FLAG in "${DATASET_FLAGS[@]}"; do
             --window_extra_node_ratio "${WINDOW_EXTRA_RATIO}" \
             --window_related_ratio "${WINDOW_RELATED_RATIO}" \
             --window_hub_ratio "${WINDOW_HUB_RATIO}" \
+            --subgraph_builder "${SUBGRAPH_BUILDER}" \
             --ppr_backend appnp \
             --ppr_topk 5 \
             --ppr_alpha 0.85 \

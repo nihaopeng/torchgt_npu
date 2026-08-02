@@ -144,7 +144,7 @@ def gather_ppr_shards(local_ppr: tuple[torch.Tensor, torch.Tensor], rank: int,
 
 
 def _preprocess_cache_enabled(args):
-    return int(getattr(args, 'use_preprocess_cache', 1)) == 1 and int(getattr(args, 'use_cache', 0)) == 1
+    return int(getattr(args, 'use_preprocess_cache', 1)) == 1
 
 
 def _print_cache_hit_preprocess_timing(total_wall_time: float, cache_lookup_load_time: float, refresh_preprocess_cache: int):
@@ -200,6 +200,7 @@ def _print_preprocess_timing(args, timing: dict, wm_timing_stats: dict):
     )
     print(
         f"[PreprocessTiming] stage2_window "
+        f"subgraph_builder={getattr(args, 'subgraph_builder', 'edge_scan')} "
         f"related={wm_timing_stats.get('related_nodes_merge_time', 0.0):.3f} "
         f"hub={wm_timing_stats.get('hub_node_merge_time', 0.0):.3f} "
         f"filler={wm_timing_stats.get('random_fill_time', 0.0):.3f} "
@@ -257,8 +258,6 @@ def build_graph_struct_info(args, N, edge_index, feature, world_size, device, to
             graph_in_degree, graph_out_degree = get_node_degrees(edge_index, N)
 
     cache_enabled = _preprocess_cache_enabled(args)
-    if int(getattr(args, 'use_preprocess_cache', 1)) == 1 and int(getattr(args, 'use_cache', 0)) != 1 and args.rank == 0:
-        print('Preprocess cache disabled: only supported for fixed-window training with --use_cache 1.')
 
     cache_key = None
     cache_path = None
@@ -400,6 +399,7 @@ def build_graph_struct_info(args, N, edge_index, feature, world_size, device, to
         window_extra_node_ratio=getattr(args, 'window_extra_node_ratio', 0.30),
         window_related_ratio=getattr(args, 'window_related_ratio', 0.15),
         window_hub_ratio=getattr(args, 'window_hub_ratio', 0.15),
+        subgraph_builder=getattr(args, 'subgraph_builder', 'edge_scan'),
         seed=getattr(args, 'seed', 42),
     )
     partition_build_time = time.time() - partition_build_start

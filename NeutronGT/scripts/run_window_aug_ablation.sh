@@ -56,6 +56,7 @@ FFN_DIM=64
 NUM_HEADS=8
 ATTN_TYPE="sparse"
 USE_CACHE=1
+SUBGRAPH_BUILDER="edge_scan"
 LOG_MEMORY_STATS=1
 MEMORY_LOG_INTERVAL=1
 TIMEOUT=120
@@ -137,6 +138,7 @@ for DATASET_FLAG in "${DATASET_FLAGS[@]}"; do
         echo "strategy=${WINDOW_AUG_STRATEGY}"
         echo "n_parts=${NPARTS} epochs=${EPOCHS}"
         echo "window extra=${WINDOW_EXTRA_RATIO} related=${WINDOW_RELATED_RATIO} hub=${WINDOW_HUB_RATIO}"
+        echo "subgraph_builder=${SUBGRAPH_BUILDER}"
         echo "cache=${USE_CACHE} preprocess_cache=${STAGE_USE_PREPROCESS_CACHE} log_memory=${LOG_MEMORY_STATS} memory_interval=${MEMORY_LOG_INTERVAL}"
         echo "GPUs=${GPU_NUM} CUDA_VISIBLE_DEVICES=${DEVICES} master_port=${MASTER_PORT}"
         echo "Log: ${LOG_FILE}"
@@ -162,6 +164,7 @@ for DATASET_FLAG in "${DATASET_FLAGS[@]}"; do
             --window_extra_node_ratio "${WINDOW_EXTRA_RATIO}" \
             --window_related_ratio "${WINDOW_RELATED_RATIO}" \
             --window_hub_ratio "${WINDOW_HUB_RATIO}" \
+            --subgraph_builder "${SUBGRAPH_BUILDER}" \
             --log_memory_stats "${LOG_MEMORY_STATS}" \
             --memory_log_interval "${MEMORY_LOG_INTERVAL}" \
             --ppr_backend appnp \

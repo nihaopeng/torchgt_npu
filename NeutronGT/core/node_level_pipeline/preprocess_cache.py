@@ -7,7 +7,8 @@ import torch
 from typing import Any
 
 _PREPROCESS_CACHE_VERSION = 1
-_WINDOW_AUG_IMPL_VERSION = 6
+_WINDOW_AUG_IMPL_VERSION = 7
+_SUBGRAPH_BUILDER_IMPL_VERSION = 1
 _PREPROCESS_CACHE_KEY_FIELDS = (
     'dataset',
     'ppr_backend',
@@ -18,7 +19,6 @@ _PREPROCESS_CACHE_KEY_FIELDS = (
     'ppr_iter_topk',
     'ppr_eps',
     'n_parts',
-    'attn_type',
     'struct_enc',
     'max_dist',
 )
@@ -29,6 +29,7 @@ _WINDOW_AUG_CACHE_KEY_FIELDS = (
     'window_extra_node_ratio',
     'window_related_ratio',
     'window_hub_ratio',
+    'subgraph_builder',
 )
 
 
@@ -40,8 +41,10 @@ def _preprocess_cache_dir(args):
 
 def _args_snapshot(args, world_size: int):
     snapshot = {key: getattr(args, key) for key in _PREPROCESS_CACHE_KEY_FIELDS}
-    snapshot.update({key: getattr(args, key) for key in _WINDOW_AUG_CACHE_KEY_FIELDS})
+    snapshot.update({key: getattr(args, key) for key in _WINDOW_AUG_CACHE_KEY_FIELDS if key != 'subgraph_builder'})
+    snapshot['subgraph_builder'] = getattr(args, 'subgraph_builder', 'edge_scan')
     snapshot['window_aug_impl_version'] = _WINDOW_AUG_IMPL_VERSION
+    snapshot['subgraph_builder_impl_version'] = _SUBGRAPH_BUILDER_IMPL_VERSION
     snapshot['world_size'] = int(world_size)
     return snapshot
 

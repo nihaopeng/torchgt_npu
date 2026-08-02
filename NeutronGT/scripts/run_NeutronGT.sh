@@ -64,6 +64,7 @@ pick_free_port() {
 }
 
 WINDOW_AUG_STRATEGY="ours"
+SUBGRAPH_BUILDER="edge_scan"
 USE_CACHE=1
 USE_PREPROCESS_CACHE=1
 ATTN_TYPE="sparse"
@@ -162,6 +163,7 @@ for DATASET_FLAG in "${DATASET_FLAGS[@]}"; do
         echo "layers=${N_LAYERS} hidden=${HIDDEN_DIM} ffn=${FFN_DIM} heads=${NUM_HEADS}"
         echo "epochs=${EPOCHS} n_parts=${NPARTS}"
         echo "window_aug=${WINDOW_AUG_STRATEGY} extra=${WINDOW_EXTRA_RATIO} related=${WINDOW_RELATED_RATIO} hub=${WINDOW_HUB_RATIO}"
+        echo "subgraph_builder=${SUBGRAPH_BUILDER}"
         echo "cache=${USE_CACHE} preprocess_cache=${USE_PREPROCESS_CACHE} refresh=${REFRESH_PREPROCESS_CACHE}"
         echo "ppr_backend=${PPR_BACKEND} ppr_topk=${PPR_TOPK} ppr_batch=${PPR_BATCH_SIZE} ppr_iter_topk=${PPR_ITER_TOPK}"
         echo "GPUs=${GPU_NUM} CUDA_VISIBLE_DEVICES=${DEVICES} master_port=${MASTER_PORT} timeout=${TIMEOUT}m"
@@ -189,6 +191,7 @@ for DATASET_FLAG in "${DATASET_FLAGS[@]}"; do
             --window_extra_node_ratio "${WINDOW_EXTRA_RATIO}" \
             --window_related_ratio "${WINDOW_RELATED_RATIO}" \
             --window_hub_ratio "${WINDOW_HUB_RATIO}" \
+            --subgraph_builder "${SUBGRAPH_BUILDER}" \
             --ppr_backend "${PPR_BACKEND}" \
             --ppr_topk "${PPR_TOPK}" \
             --ppr_alpha "${PPR_ALPHA}" \

@@ -37,8 +37,8 @@ ATTN_TYPE="full"
 USE_CACHE=0
 USE_PREPROCESS_CACHE=1
 REFRESH_PREPROCESS_CACHE=0
-SUBGRAPH_BUILDER="edge_scan"
-NPARTS=16384
+SUBGRAPH_BUILDER="neighbor_scan"
+NPARTS=24576
 WINDOW_AUG_STRATEGY="ours"
 WINDOW_EXTRA_RATIO=0.05
 WINDOW_RELATED_RATIO=0.04
@@ -62,10 +62,10 @@ pick_free_port() {
 }
 
 MASTER_PORT=$(pick_free_port)
-LOG_FILE="${LOG_DIR}/${DATASET}_${MODEL_ALIAS}_full_no_cache_e${EPOCHS}_nparts${NPARTS}_${RUN_TAG}.log"
+LOG_FILE="${LOG_DIR}/${DATASET}_${MODEL_ALIAS}_full_no_cache_${SUBGRAPH_BUILDER}_e${EPOCHS}_nparts${NPARTS}_${RUN_TAG}.log"
 
 echo "============================================================="
-echo "  NeutronGT paper100M full attention no-cache test"
+echo "  NeutronGT paper100M full attention no-cache neighbor-scan test"
 echo "============================================================="
 echo "  dataset=${DATASET}"
 echo "  model=${MODEL_ALIAS} (${MODEL})"

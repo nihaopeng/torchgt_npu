@@ -33,6 +33,7 @@ class weightMetis_keepParent:
             window_extra_node_ratio:float=0.30,
             window_related_ratio:float=0.15,
             window_hub_ratio:float=0.15,
+            subgraph_builder:str='edge_scan',
             seed:int=42,
         ) -> None:
         self.attn_type = attn_type
@@ -47,6 +48,7 @@ class weightMetis_keepParent:
         self.window_extra_node_ratio = float(window_extra_node_ratio)
         self.window_related_ratio = float(window_related_ratio)
         self.window_hub_ratio = float(window_hub_ratio)
+        self.subgraph_builder = subgraph_builder
         self.seed = int(seed)
         self.hub_node_order = None
         # print(len(torch.arange(0,len(csr_adjacency.adj_starts)-1)))
@@ -336,12 +338,82 @@ class weightMetis_keepParent:
         return sub_edge_index
 
     def _build_all_sub_edge_indices(self) -> list:
-        """一次性扫描 global_edge_index，为所有分区构建子图边索引。
+        """Build per-window local edge indices with the selected backend."""
+        if self.subgraph_builder == 'edge_scan':
+            return self._build_all_sub_edge_indices_multi_membership()
+        if self.subgraph_builder == 'neighbor_scan':
+            if self.expanded_edge[0]:
+                print('[SubgraphBuild] backend=neighbor_scan fallback=edge_scan reason=expanded_edge')
+                return self._build_all_sub_edge_indices_multi_membership()
+            return self._build_all_sub_edge_indices_neighbor_scan()
+        raise ValueError(f'Unsupported subgraph_builder: {self.subgraph_builder}')
 
-        替代原有的逐分区 torch_geometric.utils.subgraph() 调用，
-        将 50 次全量边扫描合并为 1 次。
-        """
-        return self._build_all_sub_edge_indices_multi_membership()
+    def _build_all_sub_edge_indices_neighbor_scan(self) -> list:
+        """Build subgraph edges by scanning each window's CSR neighbors."""
+        num_parts = len(self.partitioned_results)
+        if num_parts == 0:
+            return []
+
+        if self.original_rowptr is None or self.original_col is None:
+            raise ValueError('neighbor_scan requires original graph CSR data')
+
+        num_nodes = self.num_nodes or int(self.global_edge_index.max().item()) + 1
+        rowptr = self.original_rowptr.to(device='cpu', dtype=torch.long)
+        col = self.original_col.to(device='cpu')
+        local_id = torch.full((num_nodes,), -1, dtype=torch.int32)
+
+        sub_edge_list = []
+        total_sub_edges = 0
+        max_sub_edges = 0
+
+        for part in self.partitioned_results:
+            nodes = part.to(device='cpu', dtype=torch.long)
+            window_node_count = int(nodes.numel())
+            if window_node_count == 0:
+                sub_edge_list.append(torch.empty((2, 0), dtype=torch.long))
+                continue
+
+            local_id[nodes] = torch.arange(window_node_count, dtype=torch.int32)
+            try:
+                starts = rowptr[nodes]
+                degrees = rowptr[nodes + 1] - starts
+                total_degree = int(degrees.sum().item())
+                if total_degree == 0:
+                    sub_edge_list.append(torch.empty((2, 0), dtype=torch.long))
+                    continue
+
+                local_src_all = torch.repeat_interleave(
+                    torch.arange(window_node_count, dtype=torch.long),
+                    degrees,
+                )
+                segment_starts = torch.repeat_interleave(starts, degrees)
+                segment_offsets = torch.repeat_interleave(torch.cumsum(degrees, dim=0) - degrees, degrees)
+                edge_positions = segment_starts + (torch.arange(total_degree, dtype=torch.long) - segment_offsets)
+
+                neighbors = col[edge_positions].to(torch.long)
+                local_dst_all = local_id[neighbors]
+                keep = local_dst_all >= 0
+                if not keep.any():
+                    sub_edge_list.append(torch.empty((2, 0), dtype=torch.long))
+                    continue
+
+                src_local = local_src_all[keep]
+                dst_local = local_dst_all[keep].to(torch.long)
+                sub_edge_index = torch.stack([src_local, dst_local], dim=0)
+                sub_edges = int(sub_edge_index.shape[1])
+                total_sub_edges += sub_edges
+                max_sub_edges = max(max_sub_edges, sub_edges)
+                sub_edge_list.append(sub_edge_index)
+            finally:
+                local_id[nodes] = -1
+
+        avg_sub_edges = total_sub_edges / num_parts if num_parts > 0 else 0.0
+        print(
+            f'[SubgraphBuild] backend=neighbor_scan windows={num_parts} '
+            f'total_edges={total_sub_edges} avg_edges={avg_sub_edges:.1f} max_edges={max_sub_edges}'
+        )
+        del local_id
+        return sub_edge_list
 
     def _build_all_sub_edge_indices_multi_membership(self) -> list:
         """Build subgraph edges when copied nodes may belong to many windows."""

@@ -101,6 +101,9 @@ def parser_add_main_args(parser):
                        help='preferred related-node budget ratio for ours augmentation')
     parser.add_argument('--window_hub_ratio', type=float, default=0.15,
                        help='preferred global hub-node budget ratio for ours augmentation')
+    parser.add_argument('--subgraph_builder', type=str, default='edge_scan',
+                       choices=['edge_scan', 'neighbor_scan'],
+                       help='backend used to build per-window subgraph edge_index')
     parser.add_argument('--window_assignment_strategy', type=str, default='edge_balanced_step',
                        choices=['edge_balanced_step', 'round_robin'],
                        help='runtime window-to-rank assignment strategy')
