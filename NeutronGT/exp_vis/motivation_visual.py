@@ -134,21 +134,24 @@ def plot_dual_datasets(plot_params, my_params, data1, data2, xticks, y_lim, labe
         acc_vals = data['acc']
         cap_vals = data['cap']
 
-        # --- 左轴：Accuracy (折线图) ---
-        lns1 = ax1.plot(ind, acc_vals, color=my_params['colors'][0], marker='o', 
-                        label='Acc', lw=2, markersize=5)
+        # --- 左轴：Accuracy (折线图，zorder 高于柱状图) ---
+        lns1 = ax1.plot(ind, acc_vals, color=my_params['colors'][0], marker='o',
+                        label='Acc', lw=2, markersize=5, zorder=5)
         ax1.set_ylabel('Accuracy (%)',fontweight='bold')
         ax1.set_ylim(*y_lim[i]) # 统一 Acc 范围
         ax1.set_xticks(ind)
         ax1.set_xticklabels(xticks[i])
         ax1.set_title(titles[i], fontsize=plot_params['axes.titlesize'])
-        ax1.grid(axis='y', linestyle='--', alpha=0.3)
+        ax1.grid(axis='y', linestyle='--', alpha=0.3, zorder=0)
 
         # --- 右轴：Capture Rate (对数柱状图) ---
         ax2 = ax1.twinx()
-        bars = ax2.bar(ind, cap_vals, my_params['bar_width'], color=my_params['colors'][1], 
-                       hatch=my_params['hatchs'][i], label='Capture', 
-                       edgecolor='black', alpha=0.5)
+        # ax1 整体置于 ax2 之上，折线不会被柱子遮挡
+        ax1.set_zorder(ax2.get_zorder() + 1)
+        ax1.patch.set_visible(False)
+        bars = ax2.bar(ind, cap_vals, my_params['bar_width'], color=my_params['colors'][1],
+                       hatch=my_params['hatchs'][i], label='Capture',
+                       edgecolor='black', alpha=0.5, zorder=3)
         
         ax2.set_yscale('log')
         ax2.set_ylim(1e-5, 10) # 统一 Capture 范围 (10^1 为了给顶部留空)

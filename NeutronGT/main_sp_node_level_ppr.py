@@ -246,9 +246,15 @@ def main():
             sync_device(device)
             _ = time.time() - window_adjust_start
 
-        if args.save_checkpoint:
-            if args.rank == 0:
-                payload = build_checkpoint_payload(
+    # ---- 训练结束，打印最佳结果 ----
+    if args.rank == 0:
+        print("=" * 80)
+        print(f"训练完成。Best Val Acc: {best_val:.4f}, Best Test Acc: {best_test:.4f}")
+        print("=" * 80)
+
+    if args.save_checkpoint:
+        if args.rank == 0:
+            payload = build_checkpoint_payload(
                     args,
                     model,
                     optimizer,
@@ -259,10 +265,10 @@ def main():
                     best_val,
                     best_test,
                 )
-                saved_paths = save_training_checkpoint(args, payload, epoch, is_best=is_best_checkpoint)
-                print(f"Saved checkpoint(s): {', '.join(saved_paths)}")
-            if seq_parallel_world_size > 1:
-                dist.barrier()
+            saved_paths = save_training_checkpoint(args, payload, epoch, is_best=is_best_checkpoint)
+            print(f"Saved checkpoint(s): {', '.join(saved_paths)}")
+        if seq_parallel_world_size > 1:
+            dist.barrier()
 
 
 if __name__ == "__main__":

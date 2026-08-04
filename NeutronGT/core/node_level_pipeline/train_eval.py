@@ -224,6 +224,7 @@ def train_epoch(args, model:torch.nn.Module, local_partition_ids, local_partitio
     if args.use_cache:
         kv_cache_per_partition = [None] * len(local_partitions)
 
+    optimizer.zero_grad(set_to_none=True)
     for local_i in range(max_window_steps):
         is_dummy_step = local_i >= local_window_count
         if not is_dummy_step:
@@ -284,7 +285,6 @@ def train_epoch(args, model:torch.nn.Module, local_partition_ids, local_partitio
         else:
             loss = build_zero_loss(model, device)
 
-        optimizer.zero_grad(set_to_none=True)
         loss.backward()
         if world_size > 1:
             for name, param in model.named_parameters():
@@ -293,12 +293,14 @@ def train_epoch(args, model:torch.nn.Module, local_partition_ids, local_partitio
                         param.grad = torch.zeros_like(param)
                     param.grad.div_(get_sequence_parallel_world_size())
                     dist.all_reduce(param.grad, op=dist.ReduceOp.SUM, group=get_sequence_parallel_group())
-        optimizer.step()
 
         if not is_dummy_step:
             sync_device(device)
             window_forward_backward_total_time += time.time() - window_train_start
             window_count += 1
+
+    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+    optimizer.step()
 
     lr_scheduler.step()
     sync_device(device)

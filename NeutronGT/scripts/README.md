@@ -6,7 +6,8 @@
 
 | 脚本 | 类型 | 说明 |
 |------|------|------|
-| [run_NeutronGT.sh](#run_neutrongtsh) | Shell | 主训练脚本（稀疏注意力 + KV Cache） |
+| [run_NeutronGT.sh](#run_neutrongtsh) | Shell | 主训练脚本（预设参数，快速启动） |
+| [run_general.sh](#run_generalsh) | Shell | 通用训练脚本（全部参数可控） |
 | [run_ablation_2.sh](#run_ablation_2sh) | Shell | 消融实验：全注意力（无 Cache） |
 | [run_ablation_3.sh](#run_ablation_3sh) | Shell | 消融实验：稀疏注意力（带 Cache） |
 | [run_Runtimebreakdown.sh](#run_runtimebreakdownsh) | Shell | 运行时拆分实验（大模型） |
@@ -16,7 +17,7 @@
 
 ## run_NeutronGT.sh
 
-> **主训练入口**。使用 PPR + Metis 分区，在每个窗口内独立计算稀疏注意力，支持多 GPU 分布式训练（torchrun）。
+> **主训练入口（预设参数）**。使用 PPR + Metis 分区，自动按数据集和模型选择最优超参。适合快速启动。
 
 **用法：**
 ```bash
@@ -30,25 +31,69 @@ bash scripts/run_NeutronGT.sh <CUDA_VISIBLE_DEVICES> --<dataset> --<model>
 
 **示例：**
 ```bash
-# 4 GPU 训练 GT 模型 on ogbn-arxiv
 bash scripts/run_NeutronGT.sh 0,1,2,3 --arxiv --GT
-
-# 8 GPU 训练 Graphormer Slim on AmazonProducts
-bash scripts/run_NeutronGT.sh 0,1,2,3,4,5,6,7 --amazon --GPH_Slim
-
-# 单 GPU 训练
-bash scripts/run_NeutronGT.sh 0 --arxiv --GPH_Slim
 ```
 
-**模型配置速查：**
+---
 
-| 别名 | model 参数 | layers | hidden | heads | attn | epochs |
-|------|-----------|--------|--------|-------|------|--------|
-| GT | `gt_sw` | 4 | 128 | 8 | sparse | 500 |
-| GPH_Slim | `graphormer` | 4 | 64 | 8 | sparse | 500 |
-| GPH_Large | `graphormer` | 12 | 768 | 32 | sparse | 200 |
+## run_general.sh
 
-**输出：** 日志保存在 `NeutronGT_logs/` 目录下，文件名包含数据集、模型、时间戳。
+> **通用训练脚本**。全部参数可通过 CLI 控制，适合调参和自定义实验。
+
+**用法：**
+```bash
+bash scripts/run_general.sh <CUDA_VISIBLE_DEVICES> [options]
+```
+
+**参数速查：**
+
+| 类别 | 参数 | 默认值 | 说明 |
+|------|------|--------|------|
+| **数据集** | `--dataset NAME` | `ogbn-arxiv` | 任意数据集名 |
+| | `--arxiv` | - | 快捷 → `ogbn-arxiv` |
+| | `--amazon` | - | 快捷 → `AmazonProducts` |
+| | `--reddit` | - | 快捷 → `reddit` |
+| | `--products` | - | 快捷 → `ogbn-products` |
+| **模型** | `--n_layers` | `4` | Transformer 层数 |
+| | `--hidden_dim` | `128` | 隐藏维度 |
+| | `--ffn_dim` | `128` | FFN 维度 |
+| | `--num_heads` | `8` | 注意力头数 |
+| | `--attn_type` | `sparse` | `full` / `sparse` |
+| | `--epochs` | `500` | 训练 epoch 数 |
+| | `--seq_len` | `256000` | 最长序列长度 |
+| **分区** | `--n_parts` | `16` | 分区数量 |
+| | `--related_topk` | `8` | halo 扩展 top-k% |
+| | `--ppr_topk` | `5` | PPR 保留邻居数 |
+| | `--ppr_alpha` | `0.85` | PPR teleport 概率 |
+| | `--window_assign` | `edge_balanced_step` | 多 GPU 分配：`edge_balanced_step`（边数均衡）/ `round_robin`（轮询） |
+| **PPR** | `--ppr_backend` | `appnp` | `appnp` / `torch_geometric` |
+| | `--ppr_num_iter` | `10` | APPNP 迭代次数 |
+| | `--ppr_batch_size` | `8192` | APPNP 批大小 |
+| | `--ppr_iter_topk` | `5` | APPNP 裁剪 |
+| **缓存** | `--use_cache` | `1` | 启用 KV cache |
+| | `--refresh_cache` | - | 强制重建预处理缓存 |
+| **其他** | `--dataset_dir` | `./dataset/` | 数据集目录 |
+| | `--log_dir` | `NeutronGT_logs` | 日志目录 |
+
+**示例：**
+```bash
+# 常规
+bash scripts/run_general.sh 0 --arxiv
+
+# 调分区
+bash scripts/run_general.sh 0,1,2,3 --arxiv --n_parts 32 --related_topk 10
+
+# 多 GPU 均衡
+bash scripts/run_general.sh 0,1,2,3 --arxiv --window_assign edge_balanced_step
+
+# 小图全注意力
+bash scripts/run_general.sh 0 --dataset cora --n_parts 4 --attn_type full --epochs 300
+```
+
+训练结束后打印最佳结果：
+```
+训练完成。Best Val Acc: 0.5432, Best Test Acc: 0.5411
+```
 
 ---
 

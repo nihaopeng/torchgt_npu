@@ -56,9 +56,9 @@ def parallel_bar(plot_params, my_params, figpath=None):
             for j, val in enumerate(y_vals[g_name]):
                 if val == 0: # 或者使用 np.isnan(val)
                     # 在柱子底部或稍微向上的位置写上 "OOM"
-                    target_ax.text(pos[j], 0.01, 'OOM', 
-                                   ha='center', va='bottom', 
-                                   fontsize=14, color='red', 
+                    target_ax.text(pos[j], 0.01, 'OOM',
+                                   ha='center', va='bottom',
+                                   fontsize=8, color='red',
                                    fontweight='bold', rotation=90)
             # -----------------------
 
@@ -99,9 +99,9 @@ if __name__ == "__main__":
     params = {
         'font.family': 'Arial',
         'axes.labelsize': 15,
-        'xtick.labelsize': 18,
+        'xtick.labelsize': 14,
         'ytick.labelsize': 16,
-        'legend.fontsize': 18,
+        'legend.fontsize': 14,
         'axes.titlesize': 16,
         'font.weight': 'bold'
     }
@@ -114,11 +114,11 @@ if __name__ == "__main__":
         'axes_params' : [
             {
                 'y_val' : {
-                    'TorchGT': [13.07, 15, 27.33, 25.86],
-                    # 'UnifiedGT':[52.259,0,74.232,0],
-                    'NeutronGT': [12.80741, 12.29618, 29.39479, 30.30985],
+                    'TorchGT': [25.98, 77.39, 61.66, 39.06,19.26],
+                    'UnifiedGT':[60.17,0,59.39,0,0],
+                    'NeutronGT': [56.55974, 70.72, 75.13, 72.27, 42.59738],
                 },
-                'x_ticks' : ['OVA','RDT','OPT','AZ'],
+                'x_ticks' : ['OAV','RDT','OPT','AZ','OPR'],
                 'title' : '(a) GT',
                 'y1_lim' : (0, 100),
                 # 'y2_lim' : (1e-5, 10),
@@ -133,11 +133,11 @@ if __name__ == "__main__":
             },
             {
                 'y_val' : {
-                    'torchGT': [16.18, 40.63, 38.97, 26.72],
-                    # 'UnifiedGT':[47.241,87.996,74.151,0],
-                    'NeutronGT': [27.35271, 46.95454, 47.24095, 59.05403],
+                    'torchGT': [22.87, 66.92, 68.07, 72.65, 38.74],
+                    'UnifiedGT':[50.09,90.5,48.43,0,0],
+                    'NeutronGT': [57.97, 91.74, 79.44, 74.76, 46.75701],
                 },
-                'x_ticks' : ['OVA','RDT','OPT','AZ'],
+                'x_ticks' : ['OAV','RDT','OPT','AZ','OPR'],
                 'title' : '(b) $GPH_{Slim}$',
                 'y1_lim' : (0, 100),
                 # 'y2_lim' : (1e-5, 10),
@@ -152,11 +152,11 @@ if __name__ == "__main__":
             },
             {
                 'y_val' : {
-                    'torchGT': [45.56, 70, 62.57, 64.81],
-                    # 'UnifiedGT':[0,0,0,0],
-                    'NeutronGT': [50.08166, 91.35715, 80.9042, 80.00465],
+                    'torchGT': [22.87, 70.19, 63.98, 46.05, 37.06],
+                    'UnifiedGT':[0,0,0,0,0],
+                    'NeutronGT': [61.21, 86.62, 82.56, 73.44, 54.05342],
                 },
-                'x_ticks' : ['OVA','RDT','OPT','AZ'],
+                'x_ticks' : ['OAV','RDT','OPT','AZ','OPR'],
                 'title' : '(c) $GPH_{Large}$',
                 'y1_lim' : (0, 100),
                 # 'y2_lim' : (1e-5, 10),

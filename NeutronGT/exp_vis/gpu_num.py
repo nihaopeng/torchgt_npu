@@ -7,7 +7,7 @@ def multi_plot(plot_params, my_params, figpath=None):
     plt.rcParams['pdf.fonttype'] = 42
 
     n_rows, n_cols = my_params.get('axes', [1, 1])
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 4 * n_rows), constrained_layout=True)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(10, 5), constrained_layout=True)
     
     if n_rows * n_cols == 1:
         axes = [axes]
@@ -30,7 +30,8 @@ def multi_plot(plot_params, my_params, figpath=None):
         for g_idx, g_name in enumerate(group_names):
             # 将数据转为 np.array，并将 0 替换为 None/NaN 以后便折线断开
             raw_data = np.array(y_vals[g_name], dtype=float)
-            plot_data = np.where(raw_data == 0, np.nan, raw_data)
+            plot_data = np.where(raw_data < 0, np.nan, raw_data)
+            plot_data = np.where(plot_data == 0, np.nan, plot_data)
             
             target_ax = ax_secondary if (use_twin and g_idx > 0) else ax
             
@@ -95,42 +96,42 @@ if __name__ == "__main__":
         'axes_params' : [
             {
                 'y_val' : {
-                    'TorchGT': [1, 2, 4, 8],
-                    'UnifiedGT':[1, 2, 4, 8],
-                    'NeutronGT': [1, 2, 4, 8],
+                    'TorchGT': [1, 0.914772727, 0.925287356, 0.770334928],
+                    'UnifiedGT':[1, 1.738019169, 2.176, 1.882352941],
+                    'NeutronGT': [1, 1.583212033, 2.774659864, 4.862891207],
                 },
                 'x_ticks' : ['1','2','4','8'],
-                'title' : '(a) RDT',
-                'y1_lim' : (0, 10),
+                'title' : '(a) OAV',
+                'y1_lim' : (0.5, 8),
                 # 'y2_lim' : (1e-5, 10),
                 'y1_log' : True,
                 # 'y2_log' : True,
-                'y1_label' : 'Speed Up (x)',
+                'y1_label' : 'Speed Up',
                 # 'y2_label' : 'Capture Rate',
                 'markers' : ['o', 's', '^'],
-                'colors' : ['#1f77b4', '#ff7f0e','#ffff0e'],
+                'colors' : ['#1f77b4', '#ff7f0e','#79CC95'],
                 # 'use_twin': True,              # 是否开启双 Y 轴
                 'legend_loc':'upper left'
             },
             {
                 'y_val' : {
-                    'TorchGT': [1, 2, 4, 8],
-                    'UnifiedGT':[1, 2, 4, 8],
-                    'NeutronGT': [1, 2, 4, 8],
+                    'TorchGT': [1, 1.469122427, 1.669950739, 1.454935622],
+                    'UnifiedGT':[1, 1.25672487, 1.834022039, 2.132105685],
+                    'NeutronGT': [1, 1.400702988, 2.52614897, 4.58045977],
                 },
                 'x_ticks' : ['1','2','4','8'],
-                'title' : '(b) OVA',
-                'y1_lim' : (0, 10),
+                'title' : '(b) RDT',
+                'y1_lim' : (0.5, 8),
                 # 'y2_lim' : (1e-5, 10),
                 'y1_log' : True,
                 # 'y2_log' : True,
-                'y1_label' : 'Speed Up (x)',
+                'y1_label' : 'Speed Up',
                 # 'y2_label' : 'Capture Rate',
                 'markers' : ['o', 's', '^'],
-                'colors' : ['#1f77b4', '#ff7f0e','#ffff0e'],
+                'colors' : ['#1f77b4', '#ff7f0e','#79CC95'],
                 # 'use_twin': True,              # 是否开启双 Y 轴
                 'legend_loc':'upper left'
-            }
+            },
         ]
     }
 

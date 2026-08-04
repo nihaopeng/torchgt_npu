@@ -56,9 +56,9 @@ def parallel_bar(plot_params, my_params, figpath=None):
             for j, val in enumerate(y_vals[g_name]):
                 if val == 0: # 或者使用 np.isnan(val)
                     # 在柱子底部或稍微向上的位置写上 "OOM"
-                    target_ax.text(pos[j], 0.01, 'OOM', 
-                                   ha='center', va='bottom', 
-                                   fontsize=14, color='red', 
+                    target_ax.text(pos[j], 0.01, 'OOM',
+                                   ha='center', va='bottom',
+                                   fontsize=14, color='red',
                                    fontweight='bold', rotation=90)
             # -----------------------
 
@@ -114,16 +114,16 @@ if __name__ == "__main__":
             {
                 'y_val' : {
                     'TorchGT': [5.684, 82.974, 133.134, 209.964, 792.331],
-                    'UnifiedGT':[3.9998,0,11.5381,0,297.646],
-                    'NeutronGT': [0.55227, 2.11043, 8.5552, 10.29097,22.88],
+                    'UnifiedGT':[3.9998,0,11.5381,0,0],
+                    'NeutronGT': [0.55227, 2.11043, 8.5552, 10.29097,498.17242],
                 },
-                'x_ticks' : ['OVA','RDT','OPT','AZ','OPR'],
+                'x_ticks' : ['OAV','RDT','OPT','AZ','OPR'],
                 'title' : '(a) GT',
                 'y1_lim' : (1e-2, 10000),
                 # 'y2_lim' : (1e-5, 10),
                 'y1_log' : True,
                 # 'y2_log' : True,
-                'y1_label' : 'per-epoch runtime(s)',
+                'y1_label' : 'Per-epoch Runtime(s)',
                 # 'y2_label' : 'Capture Rate',
                 'hatchs' : ['///', '...','\\\\\\'],
                 'colors' : ['#1f77b4', '#ff7f0e','#ffff0e'],
@@ -133,16 +133,16 @@ if __name__ == "__main__":
             {
                 'y_val' : {
                     'TorchGT': [7.26, 92.89, 148.761, 241.84,553.476],
-                    'UnifiedGT':[3.463,11.0919,11.5374,0,14.466],
-                    'NeutronGT': [0.507, 1.69151, 7.57741, 9.33378, 38.243],
+                    'UnifiedGT':[3.463,11.0919,11.5374,0,0],
+                    'NeutronGT': [0.507, 1.69151, 7.57741, 9.33378, 489.75842],
                 },
-                'x_ticks' : ['OVA','RDT','OPT','AZ','OPR'],
+                'x_ticks' : ['OAV','RDT','OPT','AZ','OPR'],
                 'title' : '(b) GraphormerSlim',
                 'y1_lim' : (1e-2, 10000),
                 # 'y2_lim' : (1e-5, 10),
                 'y1_log' : True,
                 # 'y2_log' : True,
-                'y1_label' : 'per-epoch runtime(s)',
+                'y1_label' : 'Per-epoch Runtime(s)',
                 # 'y2_label' : 'Capture Rate',
                 'hatchs' : ['///', '...','\\\\\\'],
                 'colors' : ['#1f77b4', '#ff7f0e','#ffff0e'],
@@ -152,16 +152,16 @@ if __name__ == "__main__":
             {
                 'y_val' : {
                     'TorchGT': [6.551, 120.488, 322.709, 390.472, 4272.261],
-                    'UnifiedGT':[0,0,0,0,571.347],
-                    'NeutronGT': [2.24724, 7.39869, 36.56033, 40.38182, 301.066],
+                    'UnifiedGT':[0,0,0,0,0],
+                    'NeutronGT': [2.24724, 7.39869, 36.56033, 40.38182, 842.58062],
                 },
-                'x_ticks' : ['OVA','RDT','OPT','AZ','OPR'],
+                'x_ticks' : ['OAV','RDT','OPT','AZ','OPR'],
                 'title' : '(c) GraphormerLarge',
                 'y1_lim' : (1e-2, 10000),
                 # 'y2_lim' : (1e-5, 10),
                 'y1_log' : True,
                 # 'y2_log' : True,
-                'y1_label' : 'per-epoch runtime(s)',
+                'y1_label' : 'Per-epoch Runtime(s)',
                 # 'y2_label' : 'Capture Rate',
                 'hatchs' : ['///', '...','\\\\\\'],
                 'colors' : ['#1f77b4', '#ff7f0e','#ffff0e'],

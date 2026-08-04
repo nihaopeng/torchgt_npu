@@ -109,10 +109,25 @@ Run:
 
 ```bash
 cd ../NeutronGT
+# 预设参数（快速启动）
 bash ./scripts/run_NeutronGT.sh 0,1,2,3 --arxiv --GT
+
+# 通用脚本（全部参数可控）
+bash ./scripts/run_general.sh 0,1,2,3 --arxiv --n_parts 16 --related_topk 8
 ```
 
 `Train Time` represents the end-to-end training time per epoch.
+
+### Multi-GPU Window Assignment
+
+When training with multiple GPUs, windows are assigned to ranks using `--window_assignment_strategy`:
+
+| Strategy | Description |
+|----------|------------|
+| `edge_balanced_step` (default) | Greedy load balancing by edge/node count across ranks and steps |
+| `round_robin` | Traditional round-robin assignment |
+
+The balanced strategy minimizes per-step load imbalance for better multi-GPU utilization. See `[WindowBalance]` log lines for per-rank edge/node distribution.
 
 # Ablation Study
 

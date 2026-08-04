@@ -245,13 +245,22 @@ def build_graph_struct_info(args, N, edge_index, feature, world_size, device, to
         csr_adjacency=csr_adjacency,
         eweights=eweights,
         n_parts=n_parts,
-        feature=feature,
         edge_index=graph_edge_index,
-        related_nodes_topk_rate=related_nodes_topk_rate,
+        edge_csr_data=edge_csr_data,
         attn_type=args.attn_type,
         sorted_ppr_matrix=sorted_ppr_matrix,
     )
     partition_build_time = time.time() - partition_build_start
+
+    # 打印各分区节点数
+    if args.rank == 0:
+        sizes = [len(p) for p in wm.partitioned_results]
+        avg = sum(sizes) / len(sizes)
+        total = sum(sizes)
+        print(f"[分区] {len(sizes)} 个分区, 平均 {avg:.0f} 节点/分区, "
+              f"总计 {total} (含重复, 总节点数 {N}), "
+              f"重叠率 {total / N:.2f}x")
+        print(f"[分区] 各分区节点数: {sizes}")
 
     # Stage 1: PPR 到基础 Metis 划分完成。
     stage1_time = (

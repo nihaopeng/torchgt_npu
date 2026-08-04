@@ -173,6 +173,97 @@ def _compute_local_spatial_pos(local_partitions, local_ppr_sub_edge_index_list, 
         spatial_pos_list.append(spatial_pos)
     return spatial_pos_list
 
+def _round_robin_assignment(num_windows: int, world_size: int) -> list[list[int]]:
+    return [list(range(rank, num_windows, world_size)) for rank in range(world_size)]
+
+
+def _edge_balanced_step_assignment(structInfo: StructInfo, world_size: int) -> list[list[int]]:
+    wm = structInfo.wm
+    num_windows = len(wm.partitioned_results)
+    if num_windows == 0:
+        return [[] for _ in range(world_size)]
+    sub_edges = getattr(wm, 'sub_edge_index_for_partition_results', None) or []
+    edge_counts = [
+        int(sub_edges[pid].shape[1]) if pid < len(sub_edges) and sub_edges[pid] is not None else 0
+        for pid in range(num_windows)
+    ]
+    node_counts = [int(wm.partitioned_results[pid].numel()) for pid in range(num_windows)]
+    sorted_pids = sorted(
+        range(num_windows),
+        key=lambda pid: (edge_counts[pid], node_counts[pid], -pid),
+        reverse=True,
+    )
+    assignments = [[] for _ in range(world_size)]
+    rank_edge_totals = [0 for _ in range(world_size)]
+    rank_node_totals = [0 for _ in range(world_size)]
+    step_count = (num_windows + world_size - 1) // world_size
+    for step in range(step_count):
+        bucket = sorted_pids[step * world_size:(step + 1) * world_size]
+        rank_order = sorted(
+            range(world_size),
+            key=lambda rank: (rank_edge_totals[rank], rank_node_totals[rank], len(assignments[rank]), rank),
+        )
+        for pid, rank in zip(bucket, rank_order):
+            assignments[rank].append(pid)
+            rank_edge_totals[rank] += edge_counts[pid]
+            rank_node_totals[rank] += node_counts[pid]
+    return assignments
+
+
+def _build_window_assignment(args, structInfo: StructInfo) -> list[list[int]]:
+    world_size = int(getattr(args, 'world_size', 1))
+    num_windows = len(structInfo.wm.partitioned_results)
+    if world_size <= 1:
+        return [list(range(num_windows))]
+    strategy = getattr(args, 'window_assignment_strategy', 'edge_balanced_step')
+    if strategy == 'round_robin':
+        return _round_robin_assignment(num_windows, world_size)
+    if strategy == 'edge_balanced_step':
+        return _edge_balanced_step_assignment(structInfo, world_size)
+    raise ValueError(f"Unsupported window_assignment_strategy: {strategy}")
+
+
+def _print_window_balance(args, structInfo: StructInfo, assignments: list[list[int]]):
+    if getattr(args, 'rank', 0) != 0:
+        return
+    wm = structInfo.wm
+    sub_edges = getattr(wm, 'sub_edge_index_for_partition_results', None) or []
+    edge_counts = [
+        int(sub_edges[pid].shape[1]) if pid < len(sub_edges) and sub_edges[pid] is not None else 0
+        for pid in range(len(wm.partitioned_results))
+    ]
+    node_counts = [int(wm.partitioned_results[pid].numel()) for pid in range(len(wm.partitioned_results))]
+    rank_edges = [sum(edge_counts[pid] for pid in rank_pids) for rank_pids in assignments]
+    rank_nodes = [sum(node_counts[pid] for pid in rank_pids) for rank_pids in assignments]
+    rank_windows = [len(rank_pids) for rank_pids in assignments]
+    max_steps = max(rank_windows, default=0)
+    step_imbalances = []
+    for step in range(max_steps):
+        step_edges = [
+            edge_counts[rank_pids[step]]
+            for rank_pids in assignments
+            if step < len(rank_pids)
+        ]
+        if not step_edges:
+            continue
+        min_edges = min(step_edges)
+        max_edges = max(step_edges)
+        step_imbalances.append((max_edges / max(min_edges, 1)) if max_edges > 0 else 1.0)
+    nonzero_rank_edges = [value for value in rank_edges if value > 0]
+    rank_edge_imbalance = (
+        max(nonzero_rank_edges) / max(min(nonzero_rank_edges), 1)
+        if nonzero_rank_edges else 1.0
+    )
+    avg_step_imbalance = sum(step_imbalances) / len(step_imbalances) if step_imbalances else 1.0
+    max_step_imbalance = max(step_imbalances) if step_imbalances else 1.0
+    print(
+        f"[WindowBalance] strategy={getattr(args, 'window_assignment_strategy', 'edge_balanced_step')} "
+        f"windows={len(edge_counts)} steps={max_steps}"
+    )
+    print(f"[WindowBalance] rank_edges={rank_edges} rank_nodes={rank_nodes} rank_windows={rank_windows}")
+    print(f"[WindowBalance] rank_edge_imbalance={rank_edge_imbalance:.6f}")
+    print(f"[WindowBalance] step_edge_imbalance avg={avg_step_imbalance:.6f} max={max_step_imbalance:.6f}")
+
 
 def build_local_partitions(structInfo: StructInfo, rank: int, world_size: int):
     return structInfo.local_partition_ids, structInfo.local_partitions
@@ -205,9 +296,11 @@ def build_dup_cache_metadata(structInfo: StructInfo, feature: torch.Tensor, devi
     return dup_unique_sorted
 
 
-def _build_local_bundle_for_rank(args, structInfo: StructInfo, rank: int):
+def _build_local_bundle_for_rank(args, structInfo: StructInfo, rank: int, assignments=None):
     wm = structInfo.wm
-    local_partition_ids = list(range(rank, len(wm.partitioned_results), args.world_size))
+    if assignments is None:
+        assignments = _round_robin_assignment(len(wm.partitioned_results), int(getattr(args, 'world_size', 1)))
+    local_partition_ids = assignments[rank]
     local_partitions = [wm.partitioned_results[pid].to(torch.long).cpu() for pid in local_partition_ids]
     if args.use_cache:
         local_partitions, _ = _compute_local_duplicate_nodes(local_partitions)
@@ -276,7 +369,9 @@ def broadcast_window_state(args, structInfo: StructInfo, feature: torch.Tensor, 
         _stash_global_window_state_cpu(structInfo)
 
     if args.world_size <= 1:
-        bundle = _build_local_bundle_for_rank(args, structInfo, args.rank)
+        assignments = _build_window_assignment(args, structInfo)
+        _print_window_balance(args, structInfo, assignments)
+        bundle = _build_local_bundle_for_rank(args, structInfo, args.rank, assignments=assignments)
         _assign_local_window_bundle(structInfo, bundle)
         local_ppr_sub_edge_index_list = bundle.get('local_ppr_sub_edge_index_list', [])
         rebuild_stats = _rebuild_local_window_structures(args, structInfo, feature, device, local_ppr_sub_edge_index_list)
@@ -293,8 +388,10 @@ def broadcast_window_state(args, structInfo: StructInfo, feature: torch.Tensor, 
     # 写到磁盘
     if args.rank == 0:
         bundle_write_start = time.time()
+        assignments = _build_window_assignment(args, structInfo)
+        _print_window_balance(args, structInfo, assignments)
         for rank in range(args.world_size):
-            bundle = _build_local_bundle_for_rank(args, structInfo, rank)
+            bundle = _build_local_bundle_for_rank(args, structInfo, rank, assignments=assignments)
             torch.save(bundle, _bundle_path(args, version, rank))
         timing_stats['bundle_write_time'] = time.time() - bundle_write_start
     dist.barrier()

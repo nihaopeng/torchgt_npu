@@ -46,7 +46,7 @@ def parser_add_main_args(parser):
     parser.add_argument('--epochs', type=int, default=100) # larger seq len more training epochs
     parser.add_argument('--patience', type=int, default=50, 
                         help='Patience for early stopping')
-    parser.add_argument('--peak_lr', type=float, default=1e-4)
+    parser.add_argument('--peak_lr', type=float, default=1e-3)
     parser.add_argument('--end_lr', type=float, default=1e-9)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--perturb_feature', action='store_true', default=False)
@@ -91,6 +91,9 @@ def parser_add_main_args(parser):
                        help='number of graph partitions/windows used during Metis partitioning')
     parser.add_argument('--related_nodes_topk_rate', type=int, default=2,
                        help='top-k percent of external related neighbors merged into each partition')
+    parser.add_argument('--window_assignment_strategy', type=str, default='edge_balanced_step',
+                       choices=['edge_balanced_step', 'round_robin'],
+                       help='runtime window-to-rank assignment strategy')
     parser.add_argument('--preprocess_only', type=int, default=0, choices=[0, 1],
                        help='when set to 1, stop after graph/window preprocessing and exit before training')
     parser.add_argument('--use_preprocess_cache', type=int, default=1, choices=[0, 1],
