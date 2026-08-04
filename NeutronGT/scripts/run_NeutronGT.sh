@@ -12,7 +12,7 @@ export LD_LIBRARY_PATH=$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}
 
 DEVICES=${1-}
 if [ -z "$DEVICES" ] || [[ "$DEVICES" == -* ]]; then
-    echo "Usage: bash $0 <devices> [--arxiv|--amazon|--reddit|--products|--papers100M ...] [--GT|--GPH_Slim|--GPH_Large|--ALL] [--preprocess_only] [--refresh_preprocess_cache]"
+    echo "Usage: bash $0 <devices> [--arxiv|--amazon|--reddit|--products|--papers100M ...] [--GT|--GPH_Slim|--GPH_Large|--ALL] [--epochs N] [--preprocess_only] [--refresh_preprocess_cache]"
     echo "Example: bash $0 0,1,2,3"
     echo "         bash $0 0,1,2,3 --arxiv --products --GPH_Slim"
     echo "         bash $0 0,1,2,3 --papers100M --ALL --refresh_preprocess_cache"
@@ -25,6 +25,7 @@ LOG_DIR=NeutronGT_logs/run_NeutronGT
 RUN_TAG=$(date +%Y%m%d_%H%M)
 PREPROCESS_ONLY=0
 REFRESH_PREPROCESS_CACHE=0
+EPOCH_OVERRIDE=""
 SELECTED_DATASET_FLAGS=()
 MODELS=()
 
@@ -33,10 +34,22 @@ while [[ $# -gt 0 ]]; do
         --arxiv|--amazon|--reddit|--products|--papers100M) SELECTED_DATASET_FLAGS+=("$1") ;;
         --GT|--GPH_Slim|--GPH_Large) MODELS+=("${1:2}") ;;
         --ALL) MODELS=(GT GPH_Slim GPH_Large) ;;
+        --epochs)
+            shift
+            if [[ $# -eq 0 || "$1" == -* ]]; then
+                echo "Error: --epochs requires a positive integer." >&2
+                exit 1
+            fi
+            if ! [[ "$1" =~ ^[1-9][0-9]*$ ]]; then
+                echo "Error: --epochs must be a positive integer, got: $1" >&2
+                exit 1
+            fi
+            EPOCH_OVERRIDE="$1"
+            ;;
         --preprocess_only) PREPROCESS_ONLY=1 ;;
         --refresh_preprocess_cache) REFRESH_PREPROCESS_CACHE=1 ;;
         *)
-            echo "Usage: bash $0 <devices> [--arxiv|--amazon|--reddit|--products|--papers100M ...] [--GT|--GPH_Slim|--GPH_Large|--ALL] [--preprocess_only] [--refresh_preprocess_cache]" >&2
+            echo "Usage: bash $0 <devices> [--arxiv|--amazon|--reddit|--products|--papers100M ...] [--GT|--GPH_Slim|--GPH_Large|--ALL] [--epochs N] [--preprocess_only] [--refresh_preprocess_cache]" >&2
             echo "Error: unknown argument: $1" >&2
             exit 1
             ;;
@@ -101,7 +114,10 @@ resolve_run_params() {
         if [ "$model_alias" = "GPH_Large" ]; then
             echo "4096 40 2048 16 640 0.05 0.04 0.01"
         else
-            echo "1200 40 2048 32 640 0.10 0.05 0.05"
+            # Previous GT/GPH_Slim papers100M params:
+            # echo "1200 40 2048 32 640 0.10 0.05 0.05"
+            # Temporarily align the two small models with GPH_Large to reuse the same cache shape.
+            echo "4096 40 2048 16 640 0.05 0.04 0.01"
         fi
         return 0
     fi
@@ -144,6 +160,9 @@ for DATASET_FLAG in "${DATASET_FLAGS[@]}"; do
     for MODEL_ALIAS in "${MODELS[@]}"; do
         read -r MODEL N_LAYERS HIDDEN_DIM FFN_DIM NUM_HEADS <<< "$(resolve_model_params "${MODEL_ALIAS}")"
         read -r NPARTS EPOCHS PPR_BATCH_SIZE PPR_ITER_TOPK TIMEOUT WINDOW_EXTRA_RATIO WINDOW_RELATED_RATIO WINDOW_HUB_RATIO <<< "$(resolve_run_params "${DATASET}" "${MODEL_ALIAS}")"
+        if [ -n "${EPOCH_OVERRIDE}" ]; then
+            EPOCHS="${EPOCH_OVERRIDE}"
+        fi
 
         MODE_LABEL="train"
         if [ "$PREPROCESS_ONLY" -eq 1 ]; then
