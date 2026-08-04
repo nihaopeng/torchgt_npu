@@ -27,6 +27,10 @@ exps/
 Baseline/TorchGT_logs/
 NeutronGT/NeutronGT_logs/
 
+# ===== 临时脚本 =====
+NeutronGT/scripts/run_arxiv_gph_scaling_tmp.sh
+NeutronGT/scripts/run_arxiv_neighbor_scan_preprocess_tmp.sh
+
 # ===== 图级别任务（暂不开发）=====
 models/graphormer_dist_graph_level_mp_malnet_ppr.py
 models/graphormer_dist_graph_level_mp_malnet.py

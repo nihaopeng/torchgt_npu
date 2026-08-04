@@ -5,7 +5,7 @@ DEVICES=$1
 if [ -z "$DEVICES" ] || [[ "$DEVICES" == -* ]]; then
     echo "Error: CUDA_VISIBLE_DEVICES argument is required as the first parameter."
     echo "Usage: bash $0 <devices> [dataset_flag] [model_flag]"
-    echo "Datasets : --products | --amazon | --arxiv | --reddit"
+    echo "Datasets : --products | --amazon | --arxiv | --reddit | --papers100M"
     echo "Models   : --GT | --GPH_Slim | --GPH_Large"
     echo "Example  : bash $0 0,1,2,3 --arxiv --GT"
     exit 1
@@ -22,12 +22,13 @@ while [[ $# -gt 0 ]]; do
         --amazon)    DATASET_INPUT="AmazonProducts" ;;
         --arxiv)     DATASET_INPUT="ogbn-arxiv" ;;
         --reddit)    DATASET_INPUT="reddit" ;;
+        --papers100M) DATASET_INPUT="ogbn-papers100M" ;;
         --GT)        MODEL_INPUT="GT" ;;
         --GPH_Slim)  MODEL_INPUT="GPH_Slim" ;;
         --GPH_Large) MODEL_INPUT="GPH_Large" ;;
         *)
             echo "Error: Unknown parameter '$1'"
-            echo "Supported datasets: --products, --amazon, --arxiv, --reddit"
+            echo "Supported datasets: --products, --amazon, --arxiv, --reddit, --papers100M"
             echo "Supported models: --GT, --GPH_Slim, --GPH_Large"
             exit 1
             ;;
@@ -79,6 +80,9 @@ IFS='|' read -r strategy_alias attn_type use_reorder <<< "$attn_info"
 
 ffn_dim=$hidden_dim
 SEQ_LEN=16000
+if [ "$dataset" == "ogbn-papers100M" ]; then
+    current_epochs=40
+fi
 
 LOG_FILE="${LOG_DIR}/${dataset}_${model_alias}_${strategy_alias}_${CURRENT_DATE}.log"
 MASTER_PORT=$(( 8000 + RANDOM % 1000 ))
