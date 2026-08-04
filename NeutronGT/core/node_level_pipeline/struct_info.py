@@ -280,7 +280,8 @@ def build_graph_struct_info(args, N, edge_index, feature, world_size, device, to
                 cache_lookup_load_time = cache_load_time
                 cache_hit = payload is not None
                 if cache_hit:
-                    print(f"Preprocess cache hit: path={cache_path}, key={cache_key[:12]}, load_time={cache_load_time:.3f}s")
+                    cache_kind = payload.get('loaded_cache_kind', 'current')
+                    print(f"Preprocess cache hit: path={cache_path}, key={cache_key[:12]}, kind={cache_kind}, load_time={cache_load_time:.3f}s")
                 else:
                     print(f"Preprocess cache miss: path={cache_path}, key={cache_key[:12]}, load_time={cache_load_time:.3f}s")
                 hit_box = [cache_hit]
@@ -309,7 +310,8 @@ def build_graph_struct_info(args, N, edge_index, feature, world_size, device, to
             )
             cache_lookup_load_time = cache_load_time
             if payload is not None:
-                print(f"Preprocess cache hit: path={cache_path}, key={cache_key[:12]}, load_time={cache_load_time:.3f}s")
+                cache_kind = payload.get('loaded_cache_kind', 'current')
+                print(f"Preprocess cache hit: path={cache_path}, key={cache_key[:12]}, kind={cache_kind}, load_time={cache_load_time:.3f}s")
                 _print_cache_hit_preprocess_timing(
                     total_wall_time=time.time() - preprocess_start,
                     cache_lookup_load_time=cache_lookup_load_time,
